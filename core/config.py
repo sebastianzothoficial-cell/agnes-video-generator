@@ -1216,20 +1216,20 @@ VIDEO_MODEL_CAPABILITIES = {
         },
         "modes": [
             {"id": "text", "label": {"zh": "文生视频", "en": "Text to video"}},
-            {"id": "keyframe", "label": {"zh": "首尾帧（自动降级图片参考）", "en": "First/last frame (auto fallback)"}},
+            {"id": "keyframe", "label": {"zh": "首尾帧", "en": "First/last frame"}},
             {"id": "reference", "label": {"zh": "图片/音频参考", "en": "Image/audio reference"}},
         ],
         "durations": VIDEO_25_DURATIONS,
         "resolution": {
             "type": "ratio_size",
             "ratios": VIDEO_ASPECT_RATIOS,
-            "sizes": ["720P", "960P", "2K"],
+            "sizes": ["720P", "1080P", "1K", "2K"],
         },
         "supports_negative": False,
         "max_ref_images": 5,  # 第 6 张起 $0.005/张
         "supports_ref_video": True,
         "desc": {
-            "zh": "新一代付费模型。最高 2K 分辨率、4–12 秒、支持参考视频；不支持负面提示词。",
+            "zh": "新一代付费模型。支持 720P、1080P、1K、2K、4–12 秒、首尾帧、图片/音频/视频参考；不支持负面提示词。",
             "en": "New paid model. Up to 2K, 4–12s, supports reference videos; no negative prompt.",
         },
     },
@@ -1252,8 +1252,8 @@ VIDEO_MODEL_CAPABILITIES = {
         "max_ref_images": 5,
         "supports_ref_video": False,
         "desc": {
-            "zh": "免费新版（限时免费）。固定 720P、4–12 秒、图片参考最多 5 张；不支持负面提示词与参考视频。比例保真、绝对像素由上游按标准档归一（如 3:4 实际输出 834x1112）。",
-            "en": "Free new model (limited time). Fixed 720P, 4–12s, up to 5 ref images; no negative prompt or ref video. Aspect ratio preserved; absolute pixels normalized by upstream (e.g. 3:4 renders at 834x1112).",
+            "zh": "免费新版（限时免费）。固定 720P、4–12 秒、首尾帧、图片参考最多 5 张；不支持负面提示词与参考视频。比例保真。",
+            "en": "Free new model (limited time). Fixed 720P, 4–12s, keyframes, up to 5 reference images; no negative prompt or reference video. Aspect ratio preserved.",
         },
     },
 }

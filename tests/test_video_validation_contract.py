@@ -99,3 +99,46 @@ def test_production_rejects_unsynced_catalog(monkeypatch):
             video_size="720P",
             aspect_ratio="16:9",
         )
+
+
+def test_video_25_allows_eight_reference_images(monkeypatch):
+    model = "agnes-video-2.5"
+    monkeypatch.setattr(vv, "fetch_model_catalog", lambda api_key: _catalog(model))
+    result = vv.validate_video_request(
+        api_key="configured",
+        model=model,
+        mode="reference",
+        duration=5,
+        reference_image_count=8,
+        video_size="720P",
+        aspect_ratio="16:9",
+    )
+    assert result["verified"] is True
+
+
+def test_flash_rejects_reference_video(monkeypatch):
+    monkeypatch.setattr(vv, "fetch_model_catalog", lambda api_key: _catalog())
+    with pytest.raises(HTTPException, match="video"):
+        vv.validate_video_request(
+            api_key="configured",
+            model="agnes-video-2.5-flash",
+            mode="reference",
+            duration=5,
+            reference_video_count=1,
+            video_size="720P",
+            aspect_ratio="16:9",
+        )
+
+
+def test_flash_allows_three_reference_audio(monkeypatch):
+    monkeypatch.setattr(vv, "fetch_model_catalog", lambda api_key: _catalog())
+    result = vv.validate_video_request(
+        api_key="configured",
+        model="agnes-video-2.5-flash",
+        mode="reference",
+        duration=5,
+        reference_audio_count=3,
+        video_size="720P",
+        aspect_ratio="16:9",
+    )
+    assert result["verified"] is True

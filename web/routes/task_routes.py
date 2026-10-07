@@ -12,6 +12,7 @@ from core.config import api_key_missing_msg, get_api_key
 from core.i18n_backend import translate
 from core.pipelines import ALL_CHECKPOINTS, compute_current_checkpoint
 from core.task_manager import TaskManager
+from core import supabase_store
 from models.task import (
     AnchorVideoTask,
     CreativeVideoTask,
@@ -105,6 +106,7 @@ async def get_task(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found")
     data = state.model_dump()
     data["dir_name"] = dir_name
+    data["final_video_url"] = supabase_store.get_final_video_url(task_id) or ""
     # 后台是否有活跃 pipeline（v6.1）：前端据此区分「运行中/排队中」与
     # 「服务重启后遗留的 pending/queued（需点击续传）」，避免误导用户。
     data["active"] = task_id in app_state.active_pipelines

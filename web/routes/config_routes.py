@@ -12,7 +12,7 @@ from fastapi import APIRouter, Form, HTTPException
 
 logger = logging.getLogger(__name__)
 
-from core.api.agnes_models import fetch_model_catalog, get_fallback_models
+from core.api.agnes_models import fetch_available_models, fetch_model_catalog, get_fallback_models
 from core.api.key_manager import reset_key_ring
 from core.api.providers.base import probe_text_models
 from core.api.rate_limiter import reset_rate_limiter
@@ -60,7 +60,7 @@ router = APIRouter(tags=["config"])
 
 # 模型列表服务端缓存，避免每次页面加载都打外部接口（apihub.agnes-ai.com）导致变慢。
 # TTL 默认 5 分钟；?refresh=1 或缓存过期时重新拉取。
-_MODEL_CACHE = {"catalog": None, "ts": 0.0, "ttl": 300}
+_MODEL_CACHE = {"catalog": None, "models": None, "ts": 0.0, "ttl": 300}
 
 # 通用错误消息（复用点 > 1，提取常量避免重复字面量）
 _MSG_KEY_NOT_FOUND = "config.key_not_found"
@@ -446,36 +446,53 @@ async def detect_config_key_domains(force: bool = Form(False)):
 
 @router.get("/api/models")
 async def list_models(refresh: bool = False):
-    """Return the Agnes model catalog with explicit synchronization state.
-
-    A successful provider response is authoritative. Fallback is exposed only
-    as source="fallback" so the UI never presents it as confirmed.
-    """
+    """Return the Agnes model catalog with explicit synchronization state."""
     key = get_api_key()
     now = time.time()
+    cached_catalog = _MODEL_CACHE.get("catalog")
     if (
         not refresh
-        and _MODEL_CACHE["catalog"] is not None
-        and (now - _MODEL_CACHE["ts"]) < _MODEL_CACHE["ttl"]
+        and cached_catalog is not None
+        and (now - _MODEL_CACHE.get("ts", 0.0)) < _MODEL_CACHE.get("ttl", 300)
     ):
-        catalog = _MODEL_CACHE["catalog"]
         return {
             "ok": True,
-            **catalog,
+            **cached_catalog,
             "cached": True,
             "app_version": APP_VERSION,
             "video_capabilities": get_video_model_capabilities(),
         }
 
-    catalog = fetch_model_catalog(key) if key else {
-        "models": get_fallback_models(),
-        "model_details": {},
-        "source": "fallback",
-        "synced": False,
-        "error": "AGNES_API_KEY is not configured",
-        "status_code": None,
-    }
+    # Backward-compatible grouped catalog fetch. The richer provider catalog
+    # remains authoritative whenever it succeeds; the legacy helper is used
+    # only to preserve UI continuity when the richer request is unavailable.
+    if key:
+        catalog = fetch_model_catalog(key)
+        if catalog.get("source") != "provider" or not catalog.get("synced"):
+            try:
+                legacy_models = fetch_available_models(key)
+            except Exception:
+                legacy_models = None
+            if isinstance(legacy_models, dict) and any(legacy_models.values()):
+                catalog = {
+                    **catalog,
+                    "models": legacy_models,
+                    "model_details": catalog.get("model_details") or {},
+                    "source": "fallback",
+                    "synced": False,
+                }
+    else:
+        catalog = {
+            "models": get_fallback_models(),
+            "model_details": {},
+            "source": "fallback",
+            "synced": False,
+            "error": "AGNES_API_KEY is not configured",
+            "status_code": None,
+        }
+
     _MODEL_CACHE["catalog"] = catalog
+    _MODEL_CACHE["models"] = catalog.get("models")
     _MODEL_CACHE["ts"] = now
     return {
         "ok": True,

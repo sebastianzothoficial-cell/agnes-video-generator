@@ -11,7 +11,7 @@ from typing import List, Optional
 import srt as srt_lib
 from moviepy import VideoFileClip, concatenate_videoclips
 
-from core.compositor.ffmpeg_tool import resolve_binary
+from core.compositor.ffmpeg_tool import probe_duration, resolve_binary
 from models.task import SubtitleStyle
 
 logger = logging.getLogger(__name__)
@@ -381,17 +381,8 @@ class ConcatMixin:
 
     @staticmethod
     def _get_duration(path: str) -> float:
-        """用 ffprobe 获取媒体文件时长（秒）。"""
-        try:
-            r = subprocess.run(
-                [resolve_binary("ffprobe"), "-v", "error", "-show_entries", "format=duration",
-                 "-of", "csv=p=0", path],
-                stdin=subprocess.DEVNULL,
-                capture_output=True, text=True, timeout=15,
-            )
-            return float(r.stdout.strip())
-        except Exception:
-            return 0.0
+        """Probe duration using ffprobe with an ffmpeg fallback."""
+        return probe_duration(path, default=0.0)
 
     @staticmethod
     def _run_ffmpeg(cmd: list, desc: str = "") -> None:

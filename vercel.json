@@ -29,5 +29,9 @@
         "service": "frontend"
       }
     }
+  ],
+  "fluid": true,
+  "regions": [
+    "gru1"
   ]
 }

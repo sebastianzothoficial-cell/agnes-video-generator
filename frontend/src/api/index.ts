@@ -35,18 +35,6 @@ async function parseResponse<T = any>(r: Response): Promise<T> {
 
 async function request<T = any>(url: string, options?: RequestInit): Promise<T> {
   const r = await apiFetch(url, options)
-  // 3.1：统一检查 r.ok——此前 5xx / 错误页（HTML）会被误解析成 JSON 抛出
-  // 误导性错误；现在抛带后端 detail 的可读错误
-  if (!r.ok) {
-    let detail = ''
-    try {
-      const d = await r.json()
-      detail = d?.detail || d?.error || ''
-    } catch {
-      /* 非 JSON 响应体（如 502 错误页） */
-    }
-    throw new Error(detail || `请求失败 (HTTP ${r.status})`)
-  }
   return parseResponse(r)
 }
 
@@ -249,9 +237,7 @@ export function getArtifactCascadePreview(taskId: string, artifactId: string) {
   return request('/api/tasks/' + taskId + '/artifacts/' + encodeURIComponent(artifactId) + '/cascade-preview')
 }
 export function deleteArtifact(taskId: string, artifactId: string) {
-  return apiFetch('/api/tasks/' + taskId + '/artifacts/' + encodeURIComponent(artifactId), { method: 'DELETE' }).then(
-    (r) => r.json(),
-  )
+  return apiFetch('/api/tasks/' + taskId + '/artifacts/' + encodeURIComponent(artifactId), { method: 'DELETE' }).then(parseResponse)
 }
 
 // ── 诗词场景提示词 ──

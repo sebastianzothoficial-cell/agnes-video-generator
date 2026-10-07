@@ -11,7 +11,7 @@
       "entrypoint": "server:app",
       "functions": {
         "**/*.py": {
-          "maxDuration": 900
+          "maxDuration": 300
         }
       }
     }

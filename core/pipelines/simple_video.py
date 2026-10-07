@@ -11,9 +11,10 @@ import traceback
 from typing import Callable, Optional
 
 from core.api.agnes_video import AgnesVideoAPI
-from core.config import DEFAULT_TEXT_MODEL
+from core.config import DEFAULT_TEXT_MODEL, is_v25_video_model
 from core.pipelines import BasePipeline, PipelineShutdown
-from models.task import SimpleVideoTask, StepStatus
+from models.task import SimpleVideoTask, StepStatus, VideoMode
+from core.prompting import build_video_prompt
 from utils.network import (
     describe_network_error,
     describe_queue_full_error,
@@ -150,32 +151,69 @@ class SimpleVideoPipeline(BasePipeline):
             await video_output.save(video_path)
             return video_path
 
-        # 构建参考图列表
-        ref_images = []
-        if self._state.reference_image:
-            ref_images.append(self._state.reference_image)
-        if self._state.end_frame_image:
-            ref_images.append(self._state.end_frame_image)
+        # Explicit media semantics: keyframes use first/last frame, reference mode
+        # uses images[], and text mode sends no media at all.
+        generation_mode = {
+            VideoMode.T2V: "text",
+            VideoMode.I2V: "reference",
+            VideoMode.TI2VID: "reference",
+            VideoMode.KEYFRAMES: "keyframe",
+        }.get(self._state.mode, "text")
+        ref_images = [self._state.reference_image] if self._state.reference_image else []
+        first_frame = self._state.reference_image if generation_mode == "keyframe" else None
+        last_frame = self._state.end_frame_image if generation_mode == "keyframe" else None
 
         await self._emit("video_gen", "running", self._t("progress.simple.submitting", mode=self._state.mode), _PROGRESS_SUBMIT)
 
-        # 分隔符跟随用户 prompt 语言
-        _has_chinese = bool(re.search(r'[\u4e00-\u9fff]', self._state.prompt))
-        _sep = "--- 请严格按照以下描述生成图像/视频 ---" if _has_chinese else "--- Generate image/video strictly based on the following description ---"
-        full_prompt = f"{self._state.system_prompt.strip()}\n\n{_sep}\n{self._state.prompt}" if self._state.system_prompt.strip() else self._state.prompt
+        # Deterministic prompt architecture. Keep the user original prompt
+        # untouched while storing the processed prompt used by the provider.
+        spec = build_video_prompt(
+            self._state.prompt,
+            style=self._state.system_prompt.strip() or "cinematic",
+            scene="single coherent scene",
+            subject="the main subject described by the original prompt",
+            action="the main action described by the original prompt",
+            reference_consistency="preserve the identity/composition of the supplied reference"
+            if ref_images or first_frame or last_frame else "",
+        )
+        processed_prompt = spec.render()
+        self._state.prompt_original = self._state.prompt
+        self._state.prompt_processed = processed_prompt
+        self._state.generation_metadata = {
+            "original_prompt": self._state.prompt,
+            "processed_prompt": processed_prompt,
+            "model": self.video_api.model,
+            "capability": generation_mode,
+            "mode": generation_mode,
+            "references": [p for p in [first_frame, last_frame, *ref_images] if p],
+            "parameters": {
+                "duration": self._state.duration,
+                "video_size": getattr(self._state, "video_size", None) or "720P",
+                "width": self._state.video_width,
+                "height": self._state.video_height,
+                "seed": self._state.seed,
+            },
+        }
+        self.task_manager.update_state(
+            prompt_original=self._state.prompt,
+            prompt_processed=processed_prompt,
+            generation_metadata=self._state.generation_metadata,
+        )
+
         video_id = await self.video_api.submit_video(
-            prompt=full_prompt,
+            prompt=processed_prompt,
             reference_image_paths=ref_images,
+            first_frame_path=first_frame,
+            last_frame_path=last_frame,
+            generation_mode=generation_mode,
             duration=self._state.duration,
             width=self._state.video_width,
             height=self._state.video_height,
             seed=self._state.seed,
             negative_prompt=self._state.negative_prompt,
             video_size=getattr(self._state, "video_size", None) or "720P",
-            # U1（v7.0）：队列满时实时向前端推「排队重试中」
             progress_callback=self._submit_progress_callback("video_gen", _PROGRESS_SUBMIT),
         )
-
         # 持久化 video_id + curl 命令
         self._state.video_id = video_id
         self._save_task_json(self.working_dir, {"video_id": video_id})

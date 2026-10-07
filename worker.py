@@ -21,7 +21,15 @@ async def process_agnes_task(message: dict) -> None:
     config = durable.get("config") or {}
     dir_name = str(config.get("dir_name") or task_id)
     tm = TaskManager(task_id, dir_name=dir_name)
-    supabase_store.download_input_files(task_id, config.get("input_files") or {})
+    input_files = config.get("input_files") or {}
+    if not supabase_store.input_manifest_complete(state, input_files):
+        tm.update_state(
+            status=StepStatus.FAILED,
+            current_status="failed",
+            current_message="No se pudieron restaurar todos los archivos de entrada.",
+        )
+        raise RuntimeError(f"Incomplete input manifest for task {task_id}")
+    supabase_store.download_input_files(task_id, input_files)
     state = tm.load()
     if state is None:
         raise RuntimeError(f"Unable to hydrate task {task_id} from Supabase")

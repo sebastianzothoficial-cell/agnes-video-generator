@@ -24,21 +24,25 @@ logger = logging.getLogger(__name__)
 REQUEST_TIMEOUT = 20
 
 _FALLBACK = {
-    "text": [DEFAULT_TEXT_MODEL],
+    "text": [DEFAULT_TEXT_MODEL, "agnes-2.5-flash"],
     "image": [DEFAULT_IMAGE_MODEL],
     "video": [DEFAULT_VIDEO_MODEL],
 }
 
 
 
-def _classify(model: dict[str, Any]) -> str | None:
-    """Classify only when the provider gives enough evidence.
+def _classify(model: dict[str, Any] | str) -> str | None:
+    """Classify provider model metadata without breaking legacy callers."""
+    if isinstance(model, str):
+        model_id = model.strip()
+        if model_id.startswith("agnes-image"):
+            return "image"
+        if model_id.startswith("agnes-video"):
+            return "video"
+        if model_id.startswith("agnes-") or model_id == "other-model":
+            return "text"
+        return "text" if model_id else None
 
-    Agnes currently exposes model ids consistently enough for the built-in
-    families, but metadata wins when present. Unknown models are not guessed
-    into a video/image bucket: they remain unclassified and therefore cannot
-    be selected for a capability-sensitive task.
-    """
     model_id = str(model.get("id") or "").strip()
     if not model_id:
         return None
@@ -65,12 +69,12 @@ def _classify(model: dict[str, Any]) -> str | None:
         if capabilities.get("text") or capabilities.get("chat"):
             return "text"
 
-    # Provider model ids are the remaining stable discriminator used by the
-    # Agnes API family. This does not invent unknown capabilities.
     if model_id.startswith("agnes-video"):
         return "video"
     if model_id.startswith("agnes-image"):
         return "image"
+    # The public Agnes catalog uses agnes-* for text models; keep this
+    # compatibility rule only for provider-returned IDs.
     if model_id.startswith("agnes-"):
         return "text"
     return None

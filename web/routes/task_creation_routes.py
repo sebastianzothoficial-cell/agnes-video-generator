@@ -391,6 +391,7 @@ async def create_creative_task(
         has_reference=bool(reference_image and reference_image.filename),
         has_end_frame=bool(end_frame_images),
         video_size="720P",
+        media_pending=creative_validation_mode in {"i2v", "keyframes"},
     )
 
     # P7: 参数校验
@@ -842,6 +843,7 @@ async def create_anchor_task(
         duration=5,
         has_reference=bool(anchor_reference_image and anchor_reference_image.filename),
         video_size="720P",
+        media_pending=True,
     )
 
     if not script_text.strip():

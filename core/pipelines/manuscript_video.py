@@ -15,7 +15,7 @@ import os
 import re
 from typing import Callable, List, Optional
 
-from core.api.agnes_video import AgnesVideoAPI, VideoTaskCancelled
+from core.api.agnes_video import AgnesVideoAPI, VideoTaskCancelled, is_v25_video_model
 from core.async_io import read_text
 from core.audio.voices import duration_len, estimate_chars_per_sec
 from core.compositor.concatenator import VideoConcatenator
@@ -452,7 +452,10 @@ class ManuscriptVideoPipeline(MultiScenePipeline):
                 _PROGRESS_SUBMIT_START + _PROGRESS_SUBMIT_SPAN * (i / max(total, 1)),
             )
 
-            para_duration = max(int(math.ceil(duration_len(para.text) / estimate_chars_per_sec(para.text))), 3)
+            min_video_seconds = 4 if is_v25_video_model(self.video_api.model) else 3
+            para_duration = max(int(math.ceil(duration_len(para.text) / estimate_chars_per_sec(para.text))), min_video_seconds)
+            if is_v25_video_model(self.video_api.model):
+                para_duration = min(para_duration, 12)
             # 逐段参考图（PRD 1.5）：用户上传图按段落 index 映射，用于 i2v 引导画面
             ref_images = self._state.reference_images.get(str(para.index), [])
 

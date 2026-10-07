@@ -12,7 +12,7 @@ from fastapi import APIRouter, Form, HTTPException
 
 logger = logging.getLogger(__name__)
 
-from core.api.agnes_models import fetch_available_models, get_fallback_models
+from core.api.agnes_models import fetch_model_catalog, get_fallback_models
 from core.api.key_manager import reset_key_ring
 from core.api.providers.base import probe_text_models
 from core.api.rate_limiter import reset_rate_limiter
@@ -60,7 +60,7 @@ router = APIRouter(tags=["config"])
 
 # 模型列表服务端缓存，避免每次页面加载都打外部接口（apihub.agnes-ai.com）导致变慢。
 # TTL 默认 5 分钟；?refresh=1 或缓存过期时重新拉取。
-_MODEL_CACHE = {"models": None, "ts": 0.0, "ttl": 300}
+_MODEL_CACHE = {"catalog": None, "ts": 0.0, "ttl": 300}
 
 # 通用错误消息（复用点 > 1，提取常量避免重复字面量）
 _MSG_KEY_NOT_FOUND = "config.key_not_found"
@@ -446,41 +446,44 @@ async def detect_config_key_domains(force: bool = Form(False)):
 
 @router.get("/api/models")
 async def list_models(refresh: bool = False):
-    """拉取 Agnes 可用模型列表，按 text/image/video 分组。
+    """Return the Agnes model catalog with explicit synchronization state.
 
-    需已配置 API Key。列表来自 GET /v1/models?all=true（含内测模型）。
-    失败时回退到硬编码默认列表。
-
-    结果在服务端缓存 TTL 秒；普通页面加载走缓存瞬时返回，
-    仅“刷新列表”按钮（?refresh=1）或缓存过期时才重新请求外部接口。
+    A successful provider response is authoritative. Fallback is exposed only
+    as source="fallback" so the UI never presents it as confirmed.
     """
     key = get_api_key()
     now = time.time()
     if (
         not refresh
-        and _MODEL_CACHE["models"] is not None
+        and _MODEL_CACHE["catalog"] is not None
         and (now - _MODEL_CACHE["ts"]) < _MODEL_CACHE["ttl"]
     ):
+        catalog = _MODEL_CACHE["catalog"]
         return {
             "ok": True,
-            "models": _MODEL_CACHE["models"],
+            **catalog,
             "cached": True,
-            # U8（v7.0）：暴露应用版本，前端据此判断「模型可见但能力表未适配」
-            # 是否因版本过旧（能力表随发版硬编码）
             "app_version": APP_VERSION,
             "video_capabilities": get_video_model_capabilities(),
         }
-    grouped = fetch_available_models(key) if key else get_fallback_models()
-    _MODEL_CACHE["models"] = grouped
+
+    catalog = fetch_model_catalog(key) if key else {
+        "models": get_fallback_models(),
+        "model_details": {},
+        "source": "fallback",
+        "synced": False,
+        "error": "AGNES_API_KEY is not configured",
+        "status_code": None,
+    }
+    _MODEL_CACHE["catalog"] = catalog
     _MODEL_CACHE["ts"] = now
     return {
         "ok": True,
-        "models": grouped,
+        **catalog,
         "cached": False,
         "app_version": APP_VERSION,
         "video_capabilities": get_video_model_capabilities(),
     }
-
 
 @router.post("/api/config/models")
 async def save_models(

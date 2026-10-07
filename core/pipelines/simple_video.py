@@ -176,6 +176,12 @@ class SimpleVideoPipeline(BasePipeline):
                 processed_prompt = plan.prompt
                 self._state.duration = plan.duration
                 self._state.video_size = plan.size
+                ratio_sizes = {
+                    "21:9": (1680, 720), "16:9": (1280, 720), "4:3": (960, 720),
+                    "1:1": (720, 720), "3:4": (720, 960), "9:16": (720, 1280),
+                }
+                if plan.aspect_ratio in ratio_sizes:
+                    self._state.video_width, self._state.video_height = ratio_sizes[plan.aspect_ratio]
                 self._state.generation_metadata = {
                     "planner": "openrouter",
                     "planner_model": plan.model,

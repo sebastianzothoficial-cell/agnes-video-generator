@@ -17,6 +17,22 @@ function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
   return fetch(url, { ...options, headers: withUiLangHeader(options.headers) })
 }
 
+/** Parse API responses safely, including Vercel/plain-text runtime errors. */
+async function parseResponse<T = any>(r: Response): Promise<T> {
+  const text = await r.text()
+  let data: any = null
+  if (text) {
+    try { data = JSON.parse(text) } catch { /* keep raw text below */ }
+  }
+  if (!r.ok) {
+    const detail = data?.detail || data?.error || (text && text.trim())
+    throw new Error(detail || `Request failed (HTTP ${r.status})`)
+  }
+  if (data !== null) return data as T
+  if (!text) return {} as T
+  throw new Error(text.trim() || `Invalid API response (HTTP ${r.status})`)
+}
+
 async function request<T = any>(url: string, options?: RequestInit): Promise<T> {
   const r = await apiFetch(url, options)
   // 3.1：统一检查 r.ok——此前 5xx / 错误页（HTML）会被误解析成 JSON 抛出

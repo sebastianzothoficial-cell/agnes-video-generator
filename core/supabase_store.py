@@ -188,12 +188,6 @@ _FILE_FIELDS = (
 )
 
 def _iter_state_files(state: Any):
-    _FILE_FIELDS = (
-    "reference_image", "end_frame_image", "end_frame_images",
-    "scene_reference_images", "reference_images", "anchor_reference_image",
-)
-
-def _iter_state_files(state: Any):
     for field in _FILE_FIELDS:
         value = getattr(state, field, None)
         if isinstance(value, str) and value:

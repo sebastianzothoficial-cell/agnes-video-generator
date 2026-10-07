@@ -1,10 +1,14 @@
-"""core.api.agnes_models — 拉取 Agnes 可用模型列表（v5.0）
+"""Agnes model catalog.
 
-封装 GET /v1/models?all=true，按模型 ID 前缀分组为 text/image/video 三类。
-接口失败（网络/鉴权/非 200）时回退到硬编码默认列表，保证 UI 始终可用。
+The provider catalog is authoritative whenever it can be queried successfully.
+Fallback data is kept only for UI continuity and is explicitly marked as
+unverified by the route layer.
 """
 
+from __future__ import annotations
+
 import logging
+from typing import Any
 
 import requests
 
@@ -19,82 +23,188 @@ logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = 20
 
-# 分组失败时的兜底列表
 _FALLBACK = {
-    "text": [DEFAULT_TEXT_MODEL, "agnes-2.5-flash"],
-    "image": [DEFAULT_IMAGE_MODEL, "agnes-image-2.1-flash", "agnes-image-2.0-flash"],
+    "text": [DEFAULT_TEXT_MODEL],
+    "image": [DEFAULT_IMAGE_MODEL],
     "video": [DEFAULT_VIDEO_MODEL],
 }
 
-# 已废弃、应从可选列表中剔除的模型 ID（如 agnes-2.0-flash，官方已迁移至新版本）
 _DEPRECATED_MODELS = {"agnes-2.0-flash"}
 
 
-def _classify(model_id: str) -> str:
-    """根据模型 ID 前缀判断分组。
+def _classify(model: dict[str, Any]) -> str | None:
+    """Classify only when the provider gives enough evidence.
 
-    - ``agnes-image*`` → image
-    - ``agnes-video*`` → video
-    - 其余（如 ``agnes-3.0-flash``）→ text
+    Agnes currently exposes model ids consistently enough for the built-in
+    families, but metadata wins when present. Unknown models are not guessed
+    into a video/image bucket: they remain unclassified and therefore cannot
+    be selected for a capability-sensitive task.
     """
-    if model_id.startswith("agnes-image"):
+    model_id = str(model.get("id") or "").strip()
+    if not model_id or model_id in _DEPRECATED_MODELS:
+        return None
+
+    raw_type = str(
+        model.get("type")
+        or model.get("kind")
+        or model.get("model_type")
+        or ""
+    ).lower()
+    if raw_type in {"video", "video_generation"}:
+        return "video"
+    if raw_type in {"image", "image_generation"}:
         return "image"
+    if raw_type in {"text", "chat", "language"}:
+        return "text"
+
+    capabilities = model.get("capabilities") or {}
+    if isinstance(capabilities, dict):
+        if capabilities.get("video") or capabilities.get("text_to_video"):
+            return "video"
+        if capabilities.get("image") or capabilities.get("image_generation"):
+            return "image"
+        if capabilities.get("text") or capabilities.get("chat"):
+            return "text"
+
+    # Provider model ids are the remaining stable discriminator used by the
+    # Agnes API family. This does not invent unknown capabilities.
     if model_id.startswith("agnes-video"):
         return "video"
-    return "text"
+    if model_id.startswith("agnes-image"):
+        return "image"
+    if model_id.startswith("agnes-"):
+        return "text"
+    return None
 
 
-def get_fallback_models() -> dict:
-    """Return the built-in model catalog without contacting the provider."""
+def get_fallback_models() -> dict[str, list[str]]:
+    """Return unverified continuity data; never treat it as provider truth."""
     return {key: list(models) for key, models in _FALLBACK.items()}
 
 
-def fetch_available_models(api_key: str) -> dict:
-    """拉取并按类型分组 Agnes 可用模型。
+def _extract_capabilities(model: dict[str, Any], kind: str | None) -> dict[str, Any]:
+    raw = model.get("capabilities")
+    if isinstance(raw, dict):
+        return dict(raw)
 
-    Args:
-        api_key: Agnes API Key（Bearer Token）。
+    # Some OpenAI-compatible model registries expose input/output modalities.
+    inputs = model.get("input_modalities") or model.get("modalities") or []
+    outputs = model.get("output_modalities") or []
+    if isinstance(inputs, str):
+        inputs = [inputs]
+    if isinstance(outputs, str):
+        outputs = [outputs]
+
+    caps: dict[str, Any] = {}
+    values = {str(v).lower() for v in [*inputs, *outputs]}
+    if kind == "video":
+        caps["video"] = True
+        caps["text_to_video"] = "text" in values or not values
+        caps["image_to_video"] = "image" in values
+    elif kind == "image":
+        caps["image"] = True
+    elif kind == "text":
+        caps["text"] = True
+    return caps
+
+
+def fetch_model_catalog(api_key: str) -> dict[str, Any]:
+    """Fetch the authoritative Agnes catalog.
 
     Returns:
-        {"text": [model_id, ...], "image": [...], "video": [...]}
-        接口失败（网络/鉴权/非 200）时返回硬编码兜底列表。
+      models: grouped ids
+      model_details: per-id provider metadata/capabilities
+      source: provider | fallback
+      synced: whether the provider call succeeded
+      error: safe provider failure description, if any
+      status_code: HTTP status when available
     """
     if not api_key:
-        return get_fallback_models()
+        return {
+            "models": get_fallback_models(),
+            "model_details": {},
+            "source": "fallback",
+            "synced": False,
+            "error": "AGNES_API_KEY is not configured",
+            "status_code": None,
+        }
+
+    endpoint = f"{get_base_url_for_key(api_key)}/models?all=true"
     try:
-        endpoint = f"{get_base_url_for_key(api_key)}/models?all=true"
         resp = requests.get(
             endpoint,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=REQUEST_TIMEOUT,
         )
         if resp.status_code != 200:
+            # Do not expose response bodies: provider errors can contain
+            # request metadata and must never end up in logs/UI.
             logger.warning(
-                "[AgnesModels] /v1/models returned HTTP %s, using fallback",
+                "[AgnesModels] catalog request failed status=%s endpoint=%s",
                 resp.status_code,
+                endpoint.split("/v1/")[0] + "/v1/models",
             )
-            return dict(_FALLBACK)
+            return {
+                "models": get_fallback_models(),
+                "model_details": {},
+                "source": "fallback",
+                "synced": False,
+                "error": f"Agnes model catalog returned HTTP {resp.status_code}",
+                "status_code": resp.status_code,
+            }
+
         data = resp.json()
+        raw_models = data.get("data", [])
+        if not isinstance(raw_models, list):
+            raise ValueError("Agnes model catalog response has invalid data")
+
         grouped = {"text": [], "image": [], "video": []}
-        for item in data.get("data", []):
-            mid = item.get("id")
-            if not mid or mid in _DEPRECATED_MODELS:
+        details: dict[str, dict[str, Any]] = {}
+        unclassified: list[str] = []
+
+        for item in raw_models:
+            if not isinstance(item, dict):
                 continue
-            grouped[_classify(mid)].append(mid)
-        # 任一分类为空则补回默认，避免 UI 空下拉
-        for k, default in _FALLBACK.items():
-            if not grouped[k]:
-                grouped[k] = list(default)
-        # 确保各分类的默认模型始终在可选列表内（如服务端未返回时也能选择）
-        _defaults = {
-            "text": DEFAULT_TEXT_MODEL,
-            "image": DEFAULT_IMAGE_MODEL,
-            "video": DEFAULT_VIDEO_MODEL,
+            model_id = str(item.get("id") or "").strip()
+            kind = _classify(item)
+            if not model_id or kind is None:
+                if model_id and model_id not in _DEPRECATED_MODELS:
+                    unclassified.append(model_id)
+                continue
+            grouped[kind].append(model_id)
+            details[model_id] = {
+                "type": kind,
+                "provider": dict(item),
+                "capabilities": _extract_capabilities(item, kind),
+            }
+
+        # A successful provider response is authoritative, including empty
+        # groups. Never inject local defaults into a successful catalog.
+        return {
+            "models": grouped,
+            "model_details": details,
+            "unclassified": sorted(set(unclassified)),
+            "source": "provider",
+            "synced": True,
+            "error": None,
+            "status_code": 200,
         }
-        for k, d in _defaults.items():
-            if d not in grouped[k]:
-                grouped[k].append(d)
-        return grouped
-    except Exception as e:  # noqa: BLE001
-        logger.warning("[AgnesModels] fetch failed (%s), using fallback", e)
-        return dict(_FALLBACK)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[AgnesModels] catalog fetch failed endpoint=%s error=%s",
+            endpoint.split("/v1/")[0] + "/v1/models",
+            exc,
+        )
+        return {
+            "models": get_fallback_models(),
+            "model_details": {},
+            "source": "fallback",
+            "synced": False,
+            "error": f"Agnes model catalog unavailable: {type(exc).__name__}",
+            "status_code": None,
+        }
+
+
+def fetch_available_models(api_key: str) -> dict[str, list[str]]:
+    """Backward-compatible grouped catalog accessor."""
+    return fetch_model_catalog(api_key)["models"]

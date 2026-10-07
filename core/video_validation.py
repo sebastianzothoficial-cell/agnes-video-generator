@@ -258,6 +258,12 @@ def validate_video_request(
             detail=f"El modelo '{model}' no admite el aspect ratio '{aspect_ratio}'. Opciones: {ratios}.",
         )
 
+    if video_size == "1K" and aspect_ratio and aspect_ratio != "1:1":
+        raise HTTPException(
+            status_code=422,
+            detail="Agnes Video 2.5 1K es una salida fija 1024x1024; selecciona aspect ratio 1:1.",
+        )
+
     if has_negative_prompt and not caps["supports_negative"]:
         raise HTTPException(
             status_code=422,

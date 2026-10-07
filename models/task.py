@@ -238,6 +238,9 @@ class SimpleVideoTask(BaseTaskState):
     task_type: Literal[TaskType.SIMPLE] = TaskType.SIMPLE
 
     prompt: str = ""
+    prompt_original: str = ""
+    prompt_processed: str = ""
+    generation_metadata: dict = Field(default_factory=dict)
     mode: VideoMode = VideoMode.T2V
     reference_image: str = ""
     end_frame_image: str = ""

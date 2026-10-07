@@ -154,6 +154,8 @@ async function clearApiKey() {
 const modelSyncStatus = ref<'idle' | 'syncing' | 'ok' | 'error'>('idle')
 const modelSaveStatus = ref<'idle' | 'ok' | 'error'>('idle')
 const modelErrorMsg = ref('')
+const modelCatalogSource = ref<'provider' | 'fallback'>('fallback')
+const modelCatalogSynced = ref(false)
 
 // 2.5-flash 已正式上线（无内测标记）；pro 系列为付费模型
 function isBetaModel(m: string): boolean {
@@ -180,6 +182,11 @@ async function loadModels() {
       const d = await r.json()
       if (d.models) appState.modelListCache = d.models
       if (d.video_capabilities) appState.videoCapabilities = d.video_capabilities
+      modelCatalogSource.value = d.source === 'provider' ? 'provider' : 'fallback'
+      modelCatalogSynced.value = d.synced === true
+      if (!modelCatalogSynced.value && d.error) {
+        modelErrorMsg.value = d.error
+      }
     }
   } catch (e) {
     console.error('load /api/models failed:', e)
@@ -192,15 +199,6 @@ async function loadModels() {
       image: sel.image || appState.modelListCache.image?.[0] || '',
       video: sel.video || appState.modelListCache.video?.[0] || '',
       text_provider: sel.text_provider || '',
-    }
-    // Keep the selected defaults visible even when /api/models is temporarily
-    // unavailable: the backend always exposes its built-in fallback catalog.
-    // This prevents a valid selected model from rendering as an empty <select>.
-    for (const kind of ['text', 'image', 'video'] as const) {
-      const selected = appState.models[kind]
-      if (selected && !appState.modelListCache[kind].includes(selected)) {
-        appState.modelListCache[kind] = [selected, ...appState.modelListCache[kind]]
-      }
     }
     if (sel.text_provider) appState.textProviderSelected = sel.text_provider
   } catch (e) {
@@ -216,13 +214,22 @@ async function syncModels() {
       const d = await r.json()
       if (d.models) appState.modelListCache = d.models
       if (d.video_capabilities) appState.videoCapabilities = d.video_capabilities
-      modelSyncStatus.value = 'ok'
+      modelCatalogSource.value = d.source === 'provider' ? 'provider' : 'fallback'
+      modelCatalogSynced.value = d.synced === true
+      if (!modelCatalogSynced.value) {
+        modelErrorMsg.value = d.error || t('networkError')
+        modelSyncStatus.value = 'error'
+      } else {
+        modelSyncStatus.value = 'ok'
+      }
       setTimeout(() => (modelSyncStatus.value = 'idle'), 1500)
     } else {
       modelSyncStatus.value = 'error'
       setTimeout(() => (modelSyncStatus.value = 'idle'), 1500)
     }
   } catch (e) {
+    modelCatalogSynced.value = false
+    modelCatalogSource.value = 'fallback'
     modelSyncStatus.value = 'error'
     setTimeout(() => (modelSyncStatus.value = 'idle'), 1500)
   }
@@ -489,6 +496,8 @@ export function useConfig() {
     modelSyncStatus,
     modelSaveStatus,
     modelErrorMsg,
+    modelCatalogSource,
+    modelCatalogSynced,
     betaHintVisible,
     isBetaModel,
     isPaidModel,

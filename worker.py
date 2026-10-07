@@ -24,6 +24,9 @@ async def process_agnes_task(message: dict) -> None:
     state = tm.load()
     if state is None:
         raise RuntimeError(f"Unable to hydrate task {task_id} from Supabase")
+    if state.status in (StepStatus.COMPLETED, StepStatus.FAILED):
+        logger.info("[Queue] Task %s already terminal; acknowledging duplicate", task_id)
+        return
     input_files = config.get("input_files") or {}
     if not supabase_store.input_manifest_complete(state, input_files):
         tm.update_state(
@@ -33,9 +36,6 @@ async def process_agnes_task(message: dict) -> None:
         )
         raise RuntimeError(f"Incomplete input manifest for task {task_id}")
     supabase_store.download_input_files(task_id, input_files)
-    if state.status in (StepStatus.COMPLETED, StepStatus.FAILED):
-        logger.info("[Queue] Task %s already terminal; acknowledging duplicate", task_id)
-        return
     api_key = get_api_key()
     if not api_key:
         tm.update_state(status=StepStatus.FAILED, current_status="failed",

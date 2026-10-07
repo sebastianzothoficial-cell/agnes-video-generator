@@ -107,6 +107,12 @@ const needsEndFrame = computed(() => {
 })
 
 // 模型切换 → 修正表单默认值（选项集变化时避免非法值）
+watch(() => video.size, (size) => {
+  if (isV25.value && size === '1K') {
+    video.ratio = '1:1'
+  }
+})
+
 watch(currentVideoModel, (model, old) => {
   if (model === old) return
   const ms = modeOptions.value

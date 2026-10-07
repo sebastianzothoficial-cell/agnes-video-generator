@@ -7,6 +7,7 @@ core/config.py — Agnes Video Generator v2.0 配置模块
 import json
 import logging
 import os
+import tempfile
 
 from models.task import AudioConfig, SubtitleConfig, SubtitleStyle
 

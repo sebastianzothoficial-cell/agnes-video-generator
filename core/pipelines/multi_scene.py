@@ -22,6 +22,7 @@ from typing import Callable, List, Optional
 
 from core.api.agnes_video import VideoTaskCancelled, is_remote_video_failure
 from core.pipelines import BasePipeline, CheckpointPause, PipelineShutdown
+from core.prompting import build_video_prompt
 from models.task import SceneTask, StepStatus
 from utils.network import (
     describe_network_error,
@@ -289,10 +290,35 @@ class MultiScenePipeline(BasePipeline):
             prompt = self._get_scene_video_prompt(scene, i)
             ref_images = self._get_scene_ref_images(scene, i)
             duration = self._get_scene_duration(scene, i)
+            generation_mode = "reference" if ref_images else "text"
+
+            prompt_spec = build_video_prompt(
+                prompt,
+                style=getattr(self._state, "style", "") or "cinematic",
+                scene=f"scene {i + 1}: single coherent shot",
+                subject="the main subject described by the scene prompt",
+                action="the main action described by the scene prompt",
+                reference_consistency="preserve the supplied scene reference identity"
+                if ref_images else "",
+            )
+            processed_prompt = prompt_spec.render()
+            scene.prompt_original = prompt
+            scene.prompt_processed = processed_prompt
+            scene.model_used = self.video_api.model
+            scene.capability = "image_to_video" if ref_images else "text_to_video"
+            scene.generation_mode = generation_mode
+            scene.references = list(ref_images)
+            scene.parameters = {
+                "duration": duration,
+                "width": self._state.video_width,
+                "height": self._state.video_height,
+            }
+            self.task_manager.update_state(scenes=[s.model_dump() for s in scenes])
 
             video_id = await self.video_api.submit_video(
-                prompt=prompt,
+                prompt=processed_prompt,
                 reference_image_paths=ref_images,
+                generation_mode=generation_mode,
                 duration=duration,
                 width=self._state.video_width,
                 height=self._state.video_height,

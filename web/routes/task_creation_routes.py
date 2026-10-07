@@ -247,6 +247,9 @@ async def create_simple_task(
         duration=duration,
         has_reference=bool(reference_image and reference_image.filename),
         has_end_frame=bool(end_frame_image and end_frame_image.filename),
+        video_size=video_size or "720P",
+        aspect_ratio=None,
+        has_negative_prompt=bool(negative_prompt),
     )
 
     # P7: 参数校验
@@ -386,6 +389,7 @@ async def create_creative_task(
         duration=5,
         has_reference=bool(reference_image and reference_image.filename),
         has_end_frame=bool(end_frame_images),
+        video_size="720P",
     )
 
     # P7: 参数校验
@@ -538,7 +542,7 @@ async def create_manuscript_task(
         api_key=api_key,
         model=video_model,
         mode="i2v" if reference_images else "t2v",
-        duration=video_duration,
+        duration=5,
         has_reference=bool(reference_images),
     )
 
@@ -816,6 +820,7 @@ async def create_anchor_task(
         mode="i2v",
         duration=5,
         has_reference=bool(anchor_reference_image and anchor_reference_image.filename),
+        video_size="720P",
     )
 
     if not script_text.strip():

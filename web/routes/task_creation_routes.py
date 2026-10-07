@@ -410,6 +410,18 @@ async def create_creative_task(
                 detail=translate("validation.scene_count_range", None, min=1, max=30),
             )
         scene_durations = _parse_scene_durations_json(scene_durations_json)
+        # Validate every user-supplied scene duration against the real provider
+        # before the task is persisted/queued.
+        for scene_duration in sorted({int(d) for d in scene_durations}):
+            validate_video_request(
+                api_key=api_key,
+                model=video_model,
+                mode=creative_validation_mode,
+                duration=scene_duration,
+                has_reference=bool(reference_image and reference_image.filename),
+                has_end_frame=bool(end_frame_images),
+                video_size="720P",
+            )
     else:
         scene_durations = []
 

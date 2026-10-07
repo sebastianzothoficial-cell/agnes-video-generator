@@ -9,11 +9,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException
 
+from core import supabase_store
 from core.config import api_key_missing_msg, get_api_key
 from core.i18n_backend import translate
 from core.pipelines import ALL_CHECKPOINTS, compute_current_checkpoint
 from core.task_manager import TaskManager
-from core import supabase_store
 from models.task import (
     AnchorVideoTask,
     CreativeVideoTask,

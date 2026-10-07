@@ -6,6 +6,7 @@ import pytest
 
 from core.compositor.concatenator.audio_overlay import AudioOverlayMixin
 from core.compositor.concatenator.concat import VideoConcatenator
+from core.compositor.ffmpeg_tool import resolve_binary
 
 ASSET = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),

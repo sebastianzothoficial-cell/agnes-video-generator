@@ -423,6 +423,7 @@ async def create_creative_task(
                 has_reference=bool(reference_image and reference_image.filename),
                 has_end_frame=bool(end_frame_images),
                 video_size="720P",
+                media_pending=creative_validation_mode in {"i2v", "keyframes"},
             )
     else:
         scene_durations = []

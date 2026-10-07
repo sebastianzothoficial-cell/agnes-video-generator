@@ -204,14 +204,15 @@ def _sanitize_provider_text(value: str) -> str:
     text = str(value)
     import re
     patterns = (
-        (r"(?i)(authorization\\s*[:=]\\s*bearer\\s+)[^\\s,\\"}]+", r"\\1[REDACTED]"),
-        (r"(?i)(bearer\\s+)[^\\s,\\"}]+", r"\\1[REDACTED]"),
-        (r"(?i)(sk-[a-z0-9_-]{8,})", "[REDACTED_API_KEY]"),
-        (r"(?i)((?:api[_-]?key|access[_-]?token|token)\\s*[:=]\\s*[\\"']?)[^\\s,\\"'}]+", r"\\1[REDACTED]"),
+        (r'(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,}"\']+', r'\1[REDACTED]'),
+        (r'(?i)(bearer\s+)[^\s,}"\']+', r'\1[REDACTED]'),
+        (r'(?i)sk-[a-z0-9_-]{8,}', '[REDACTED_API_KEY]'),
+        (r'(?i)((?:api[_-]?key|access[_-]?token|token)\s*[:=]\s*["\']?)[^\s,}"\']+', r'\1[REDACTED]'),
     )
     for pattern, replacement in patterns:
         text = re.sub(pattern, replacement, text)
     return text[:5000]
+
 
 
 def collect_error(

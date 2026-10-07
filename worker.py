@@ -27,6 +27,14 @@ async def process_agnes_task(message: dict) -> None:
     if state.status in (StepStatus.COMPLETED, StepStatus.FAILED):
         logger.info("[Queue] Task %s already terminal; acknowledging duplicate", task_id)
         return
+    if not supabase_store.claim_task(task_id):
+        latest = supabase_store.get_task(task_id) or {}
+        latest_status = str(latest.get("status") or "")
+        if latest_status in ("running", "completed", "failed"):
+            logger.info("[Queue] Task %s already claimed/status=%s; acknowledging duplicate", task_id, latest_status)
+            return
+        raise RuntimeError(f"Unable to claim durable task {task_id}")
+    state.status = StepStatus.RUNNING
     input_files = config.get("input_files") or {}
     if not supabase_store.input_manifest_complete(state, input_files):
         tm.update_state(

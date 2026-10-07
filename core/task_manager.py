@@ -65,6 +65,14 @@ class TaskManager:
         self._state = state
         self._state.task_id = self.task_id
         self._input_files = supabase_store.sync_input_files(self._state)
+        # A Vercel worker starts in a fresh instance. Never enqueue a task whose
+        # required local inputs were not durably copied to Supabase Storage.
+        if supabase_store.enabled() and not supabase_store.input_manifest_complete(
+            self._state, self._input_files
+        ):
+            raise RuntimeError(
+                f"Durable input persistence incomplete for task {self.task_id}"
+            )
         # v6.1 二期：任务创建时间戳（诊断端点时间窗口匹配兜底用）
         now = datetime.now().isoformat(timespec="seconds")
         if not self._state.created_at:

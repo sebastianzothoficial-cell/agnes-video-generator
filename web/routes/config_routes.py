@@ -492,28 +492,57 @@ async def save_models(
     video: str = Form(None),
     text_provider: str = Form(None),
 ):
-    """保存选中的模型配置。
+    """Save selected models only when they are compatible with the real catalog.
 
-    text 为必填（目前仅文本模型开放选择）；image/video 接受但不强制，
-    置灰时前端仍会随配置保存其值（缺省回退到当前默认值）。
-
-    ``text_provider`` 可选：收到该字段时写入 ``models.text_provider``；
-    缺省（字段缺席）= 不修改。
-
-    ⚠️ **不要依赖空串表达「回退 agnes」**：HTTP 表单层（multipart 与 urlencoded
-    均然）会把空串字段解析为 ``None``，与字段缺席无法区分，于是切换回 agnes
-    时旧供应商会被保留、文本调用继续打第三方端点。前端必须显式发送
-    ``'agnes'``（``resolve_text_chat`` 对 ``""`` 与 ``"agnes"`` 都走 agnes 分支）。
+    Agnes remains the source of truth for Agnes text/image/video models. Custom
+    text providers are validated by their own provider configuration and are
+    therefore exempt from the Agnes text catalog check.
     """
     if text is None or text.strip() == "":
         raise HTTPException(status_code=400, detail=translate("config.text_model_empty"))
+
+    key = get_api_key()
+    catalog = fetch_model_catalog(key) if key else None
+    selected_provider = (
+        text_provider.strip()
+        if text_provider is not None
+        else get_selected_text_provider()
+    )
+
+    if catalog and catalog.get("source") == "provider" and catalog.get("synced"):
+        models = catalog.get("models") or {}
+        if selected_provider in ("", PROVIDER_AGNES) and text and text not in set(models.get("text", [])):
+            raise HTTPException(
+                status_code=422,
+                detail=f"El modelo de texto '{text}' no está disponible para esta API key según Agnes.",
+            )
+        if image and image not in set(models.get("image", [])):
+            raise HTTPException(
+                status_code=422,
+                detail=f"El modelo de imagen '{image}' no está disponible para esta API key según Agnes.",
+            )
+        if video and video not in set(models.get("video", [])):
+            raise HTTPException(
+                status_code=422,
+                detail=f"El modelo de video '{video}' no está disponible para esta API key según Agnes.",
+            )
+    elif os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+        # Do not persist an unverified video selection in production. The user
+        # can still open the UI and sync again once Agnes is reachable.
+        if video:
+            reason = (catalog or {}).get("error") if catalog else "AGNES_API_KEY is not configured"
+            raise HTTPException(
+                status_code=503,
+                detail=f"No se puede verificar el modelo de video en producción: {reason or 'catálogo Agnes no sincronizado'}.",
+            )
+
     result = set_selected_models(
         text=text or None,
         image=image,
         video=video,
     )
     if text_provider is not None:
-        set_selected_text_provider(text_provider.strip() or "")
+        set_selected_text_provider(selected_provider)
         result = get_selected_models()
     return {"ok": True, "models": result}
 

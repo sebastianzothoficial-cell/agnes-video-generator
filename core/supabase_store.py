@@ -1,10 +1,12 @@
 """Durable Supabase persistence for Agnes tasks."""
 from __future__ import annotations
+
 import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
 import requests
 
 logger = logging.getLogger(__name__)
@@ -50,7 +52,8 @@ def upsert_task(state: Any, *, dir_name: str = "", input_files: dict[str, str] |
     try:
         data = state.model_dump(mode="json")
         status = data.get("status")
-        if hasattr(status, "value"): status = status.value
+        if hasattr(status, "value"):
+            status = status.value
         progress = float(data.get("current_progress") or 0)
         row = {
             "id": _uuid_for_task(state.task_id), "task_key": state.task_id,
@@ -77,7 +80,8 @@ def upsert_task(state: Any, *, dir_name: str = "", input_files: dict[str, str] |
 
 def upload_final_video(state: Any, *, dir_name: str = "") -> str | None:
     cfg = _config()
-    if not cfg: return None
+    if not cfg:
+        return None
     path = str(getattr(state, "final_video_file", "") or "")
     if not path or not os.path.isfile(path):
         return None

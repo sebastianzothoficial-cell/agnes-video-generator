@@ -127,6 +127,10 @@ export function useVideoModelCaps() {
 
   // 比例 → 像素（提交用）
   function ratioToWH(ratio: string, model: string): [number, number] {
+    if (model === 'agnes-video-2.5-flash' && ratio === '16:9') {
+      // Agnes Flash documents a 1280x704 file for the 720P 16:9 output.
+      return [1280, 704]
+    }
     return RATIO_TO_WH[ratio] || (isV25(model) ? [1280, 720] : [768, 1152])
   }
 

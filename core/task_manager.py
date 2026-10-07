@@ -96,6 +96,15 @@ class TaskManager:
             durable = supabase_store.get_task(self.task_id)
             if durable:
                 data = durable.get("input_payload")
+                durable_dir = str((durable.get("config") or {}).get("dir_name") or "").strip()
+                if durable_dir:
+                    try:
+                        self.dir_name = durable_dir
+                        self.task_dir = safe_join(get_working_dir(), self.dir_name)
+                        self._task_file = os.path.join(self.task_dir, "task_state.json")
+                    except UnsafePathError:
+                        logger.warning("[TaskManager] Unsafe durable dir_name for %s", self.task_id)
+                        return None
 
         if data is None:
             return None

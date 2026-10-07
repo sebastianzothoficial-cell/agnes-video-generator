@@ -48,6 +48,6 @@ async def process_agnes_task(message: dict) -> None:
     logger.info("[Queue] Finished durable Agnes task %s", task_id)
 
 @subscribe(topic=AGNES_QUEUE_TOPIC, consumer_group="agnes-video-worker",
-            retry_after=60, max_concurrency=1, max_attempts=5)
+            retry_after=900, max_concurrency=1, max_attempts=5)
 async def handle_agnes_task(message: dict) -> None:
     await process_agnes_task(message)

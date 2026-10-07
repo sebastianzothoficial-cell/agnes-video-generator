@@ -188,7 +188,7 @@ _FILE_FIELDS = (
 )
 
 def _iter_state_files(state: Any):
-    for field in _FILE_FIELDS = (
+    _FILE_FIELDS = (
     "reference_image", "end_frame_image", "end_frame_images",
     "scene_reference_images", "reference_images", "anchor_reference_image",
 )

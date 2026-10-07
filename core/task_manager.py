@@ -79,12 +79,25 @@ class TaskManager:
         向后兼容：旧数据无 task_type → 自动视为 CreativeVideoTask（D6）。
         注意：load 是读操作，不调用 _ensure_dir()，避免为不存在的任务创建空目录。
         """
-        if not self._task_file or not os.path.exists(self._task_file):
+        data = None
+        if self._task_file and os.path.exists(self._task_file):
+            try:
+                with open(self._task_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception as e:
+                logger.warning(f"[TaskManager] Failed to read local task {self.task_id}: {e}")
+
+        # Vercel instances are ephemeral: recover the last durable state from Supabase
+        # when the local task directory is gone after a cold start/redeployment.
+        if data is None and supabase_store.enabled():
+            durable = supabase_store.get_task(self.task_id)
+            if durable:
+                data = durable.get("input_payload")
+
+        if data is None:
             return None
 
         try:
-            with open(self._task_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
 
             # v2.0：通过 parse_task_state 工厂函数反序列化
             # 旧数据没有 task_type，parse_task_state 会默认设为 CREATIVE

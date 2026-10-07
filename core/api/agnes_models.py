@@ -171,7 +171,7 @@ def fetch_model_catalog(api_key: str) -> dict[str, Any]:
             model_id = str(item.get("id") or "").strip()
             kind = _classify(item)
             if not model_id or kind is None:
-                if model_id and model_id not in _DEPRECATED_MODELS:
+                if model_id:
                     unclassified.append(model_id)
                 continue
             grouped[kind].append(model_id)

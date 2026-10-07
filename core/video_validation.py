@@ -100,10 +100,10 @@ def _effective_capabilities(catalog: dict[str, Any], model: str) -> dict[str, An
     ) or bool(provider_modes)
     provider_has_i2v = any(
         key in provider_caps for key in ("image_to_video", "i2v")
-    ) or bool(provider_modes)
+    ) or bool(provider_modes & {"i2v", "image", "reference", "image_to_video", "image-to-video"})
     provider_has_keyframes = any(
         key in provider_caps for key in ("keyframes", "keyframe", "first_last_frame", "first_last_frames")
-    ) or bool(provider_modes)
+    ) or bool(provider_modes & {"keyframe", "keyframes", "first_last_frame", "first-last-frame"})
 
     local_t2v = bool(local_modes & {"t2v", "text", "reference"})
     local_i2v = bool(local_modes & {"i2v", "reference"})

@@ -46,6 +46,24 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["task-creation"])
 
+
+def _persist_task_or_http_error(task_manager: TaskManager, state) -> None:
+    """Persist a task before queueing it; never leak a raw runtime 500 to clients."""
+    try:
+        task_manager.create(state)
+    except Exception as exc:
+        logger.error(
+            "[TaskCreation] Failed to persist task %s before queue dispatch: %s",
+            getattr(state, "task_id", "?"),
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="No se pudo guardar la tarea y sus archivos de entrada. Intenta nuevamente.",
+        ) from exc
+
+
 async def _dispatch_pipeline(pipeline, state, task_manager) -> str:
     """Dispatch durable pipeline execution on Vercel; keep local dev unchanged."""
     if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
@@ -278,7 +296,7 @@ async def create_simple_task(
         app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
-    tm.create(state)
+    _persist_task_or_http_error(tm, state)
     deps.mark_task_queued(tm, lang=state.ui_language)
     await _dispatch_pipeline(pipeline, state, tm)
     logger.info(f"[Simple] Task created: {task_id}, mode={mode}, duration={duration}s (queued)")
@@ -432,7 +450,7 @@ async def create_creative_task(
         app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
-    tm.create(state)
+    _persist_task_or_http_error(tm, state)
     deps.mark_task_queued(tm, lang=state.ui_language)
     await _dispatch_pipeline(pipeline, state, tm)
     logger.info("[Creative] Task created: %s, idea=%s... (queued)",
@@ -567,7 +585,7 @@ async def create_manuscript_task(
         app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
-    tm.create(state)
+    _persist_task_or_http_error(tm, state)
     deps.mark_task_queued(tm, lang=state.ui_language)
     await _dispatch_pipeline(pipeline, state, tm)
     logger.info(f"[Manuscript] Task created: {task_id}, text_len={len(manuscript_text)} (queued)")
@@ -692,7 +710,7 @@ async def create_poetry_task(
         app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
-    tm.create(state)
+    _persist_task_or_http_error(tm, state)
     deps.mark_task_queued(tm, lang=state.ui_language)
     await _dispatch_pipeline(pipeline, state, tm)
     logger.info("[Poetry] Task created: %s, poem=%r (queued)",
@@ -786,7 +804,7 @@ async def create_anchor_task(
         app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
-    tm.create(state)
+    _persist_task_or_http_error(tm, state)
     deps.mark_task_queued(tm, lang=state.ui_language)
     await _dispatch_pipeline(pipeline, state, tm)
     logger.info(f"[Anchor] Task created: {task_id}, script_len={len(script_text)} (queued)")

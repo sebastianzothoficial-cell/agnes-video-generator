@@ -162,6 +162,8 @@ class TaskManager:
                     json.dump(self._state.model_dump(), f, ensure_ascii=False)
                 os.replace(tmp_path, self._task_file)
                 supabase_store.upsert_task(self._state, dir_name=self.dir_name)
+                if self._state.status == StepStatus.COMPLETED:
+                    supabase_store.upload_final_video(self._state, dir_name=self.dir_name)
             except Exception:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)

@@ -25,6 +25,7 @@ from core.pipelines import ALL_CHECKPOINTS
 from core.pipelines.poetry_video import POETRY_SUBTITLE_STYLE
 from core.screenwriter import build_poetry_scene_prompt
 from core.task_manager import TaskManager
+from core.video_validation import validate_video_request
 from models.task import (
     AnchorVideoTask,
     AudioConfig,
@@ -227,6 +228,18 @@ async def create_simple_task(
     if not api_key:
         raise HTTPException(status_code=400, detail=api_key_missing_msg())
 
+    # Production pre-flight: verify selected model and requested capability before persistence.
+    video_model = get_selected_models().get("video") or ""
+    validation_mode = "i2v" if mode in ("i2v", "ti2vid") else ("keyframes" if mode == "keyframes" else "t2v")
+    validate_video_request(
+        api_key=api_key,
+        model=video_model,
+        mode=validation_mode,
+        duration=duration,
+        has_reference=bool(reference_image and reference_image.filename),
+        has_end_frame=bool(end_frame_image and end_frame_image.filename),
+    )
+
     # P7: 参数校验
     _VALID_MODES = {"t2v", "i2v", "ti2vid", "keyframes"}
     if mode not in _VALID_MODES:
@@ -350,6 +363,21 @@ async def create_creative_task(
     # v4.0: 音色与目标语言兼容性校验
     if audio_enabled:
         helpers._validate_voice_compat(audio_voice, audio_lang or "zh")
+
+    video_model = get_selected_models().get("video") or ""
+    creative_validation_mode = {
+        "keyframes": "keyframes",
+        "ti2vid": "i2v",
+        "none": "t2v",
+    }.get(chaining_mode, "t2v")
+    validate_video_request(
+        api_key=api_key,
+        model=video_model,
+        mode=creative_validation_mode,
+        duration=5,
+        has_reference=bool(reference_image and reference_image.filename),
+        has_end_frame=bool(end_frame_images),
+    )
 
     # P7: 参数校验
     if len(idea) > 10000:
@@ -496,6 +524,15 @@ async def create_manuscript_task(
     if not api_key:
         raise HTTPException(status_code=400, detail=api_key_missing_msg())
 
+    video_model = get_selected_models().get("video") or ""
+    validate_video_request(
+        api_key=api_key,
+        model=video_model,
+        mode="i2v" if reference_images else "t2v",
+        duration=video_duration,
+        has_reference=bool(reference_images),
+    )
+
     if not manuscript_text.strip():
         raise HTTPException(
             status_code=400,
@@ -626,6 +663,14 @@ async def create_poetry_task(
     if audio_enabled:
         helpers._validate_voice_compat(audio_voice, audio_lang or "zh")
 
+    video_model = get_selected_models().get("video") or ""
+    validate_video_request(
+        api_key=api_key,
+        model=video_model,
+        mode="t2v",
+        duration=5,
+    )
+
     if not poem_text.strip():
         raise HTTPException(
             status_code=400,
@@ -754,6 +799,15 @@ async def create_anchor_task(
     # 校验，而非页面语言。否则中文环境下输入英文稿 + 选英文音色会被误判为不支持。
     if audio_enabled:
         helpers._validate_voice_compat(audio_voice, audio_lang or "zh", text=script_text)
+
+    video_model = get_selected_models().get("video") or ""
+    validate_video_request(
+        api_key=api_key,
+        model=video_model,
+        mode="i2v",
+        duration=5,
+        has_reference=bool(anchor_reference_image and anchor_reference_image.filename),
+    )
 
     if not script_text.strip():
         raise HTTPException(

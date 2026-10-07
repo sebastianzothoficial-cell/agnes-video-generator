@@ -548,18 +548,32 @@ class VideoStepsMixin:
                 self._t("progress.creative_video.scene_submit", i=scene_idx + 1, total=total),
                 _PROGRESS_KEYFRAME_SUBMIT_START + _PROGRESS_KEYFRAME_SUBMIT_SPAN * scene_idx / total,
             )
-            video_id = await self.video_generator.submit_video(
-                prompt=info["scene_text"],
-                reference_image_paths=[info["first_frame_url"], info["end_frame_url"]],
-                duration=self._scene_duration(scene_idx),
-                width=vw,
-                height=vh,
-                # U1（v7.0）：队列满时实时向前端推「排队重试中」
-                progress_callback=self._submit_progress_callback(
-                    "video_gen",
-                    _PROGRESS_KEYFRAME_SUBMIT_START + _PROGRESS_KEYFRAME_SUBMIT_SPAN * scene_idx / total,
-                ),
-            )
+            if is_v25_video_model(self.video_generator.model):
+                video_id = await self.video_generator.submit_video(
+                    prompt=info["scene_text"],
+                    generation_mode="keyframe",
+                    first_frame_path=info["first_frame_url"],
+                    last_frame_path=info["end_frame_url"],
+                    duration=self._scene_duration(scene_idx),
+                    width=vw,
+                    height=vh,
+                    progress_callback=self._submit_progress_callback(
+                        "video_gen",
+                        _PROGRESS_KEYFRAME_SUBMIT_START + _PROGRESS_KEYFRAME_SUBMIT_SPAN * scene_idx / total,
+                    ),
+                )
+            else:
+                video_id = await self.video_generator.submit_video(
+                    prompt=info["scene_text"],
+                    reference_image_paths=[info["first_frame_url"], info["end_frame_url"]],
+                    duration=self._scene_duration(scene_idx),
+                    width=vw,
+                    height=vh,
+                    progress_callback=self._submit_progress_callback(
+                        "video_gen",
+                        _PROGRESS_KEYFRAME_SUBMIT_START + _PROGRESS_KEYFRAME_SUBMIT_SPAN * scene_idx / total,
+                    ),
+                )
             info["video_id"] = video_id
             info["already_submitted"] = True
             self._save_scene_task(info["scene_dir"], video_id)

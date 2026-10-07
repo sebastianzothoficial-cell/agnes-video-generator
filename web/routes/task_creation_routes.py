@@ -50,6 +50,15 @@ router = APIRouter(tags=["task-creation"])
 
 def _persist_task_or_http_error(task_manager: TaskManager, state) -> None:
     """Persist a task before queueing it; never leak a raw runtime 500 to clients."""
+    # Capture the selected provider models in the durable task payload. Vercel
+    # Queue workers may run on a fresh instance where the web UI config lives
+    # only in ephemeral /tmp and would otherwise silently fall back to defaults.
+    selected = get_selected_models()
+    state.selected_models = {
+        key: str(value)
+        for key, value in selected.items()
+        if key in {"text", "image", "video"} and value
+    }
     try:
         task_manager.create(state)
     except Exception as exc:

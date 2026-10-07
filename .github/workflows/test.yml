@@ -81,8 +81,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Lint (ruff)
-        run: ruff check core/ web/ utils/ models/ scripts/ --output-format=github
+      - name: Lint and auto-fix (ruff)
+        run: |
+          ruff check core/ web/ utils/ models/ scripts/ --fix --output-format=github
+          ruff check core/ web/ utils/ models/ scripts/ --output-format=github
+          if [ -n "$(git status --porcelain core/ web/ utils/ models/ scripts/)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add core/ web/ utils/ models/ scripts/
+            git commit -m "style: auto-fix ruff lint"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
 
       - name: Setup Node (frontend unit tests)
         uses: actions/setup-node@v4

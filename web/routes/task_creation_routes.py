@@ -723,6 +723,14 @@ async def create_poetry_task(
                 detail=translate("validation.scene_count_range", None, min=1, max=30),
             )
         scene_durations = _parse_scene_durations_json(scene_durations_json)
+        for scene_duration in sorted({int(d) for d in scene_durations}):
+            validate_video_request(
+                api_key=api_key,
+                model=video_model,
+                mode="t2v",
+                duration=scene_duration,
+                video_size="720P",
+            )
     else:
         scene_durations = []
 

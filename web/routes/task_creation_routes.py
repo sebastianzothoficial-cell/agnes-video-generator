@@ -18,6 +18,7 @@ from core.config import (
     get_api_key,
     get_selected_models,
     is_v25_video_model,
+    width_height_to_aspect_ratio,
 )
 from core.i18n_backend import get_current_lang, translate
 from core.path_security import safe_join
@@ -248,7 +249,7 @@ async def create_simple_task(
         has_reference=bool(reference_image and reference_image.filename),
         has_end_frame=bool(end_frame_image and end_frame_image.filename),
         video_size=video_size or "720P",
-        aspect_ratio=None,
+        aspect_ratio=width_height_to_aspect_ratio(video_width, video_height),
         has_negative_prompt=bool(negative_prompt),
     )
 

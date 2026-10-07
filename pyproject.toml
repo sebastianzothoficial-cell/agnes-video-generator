@@ -1,0 +1,8 @@
+[project]
+name = "agnes-video-generator"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[[tool.vercel.subscribers]]
+entrypoint = "worker:handle_agnes_task"

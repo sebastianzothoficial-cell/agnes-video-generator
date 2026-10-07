@@ -115,6 +115,48 @@ def probe_duration(path: str, default: float = 0.0) -> float:
     return default
 
 
+def probe_video_signature(path: str) -> "tuple[int, int, str] | None":
+    """Return width, height and average frame rate without requiring ffprobe."""
+    if not path or not os.path.exists(path):
+        return None
+
+    ffprobe = resolve_binary("ffprobe")
+    if ffprobe:
+        try:
+            r = subprocess.run(
+                [ffprobe, "-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream=width,height,avg_frame_rate",
+                 "-of", "csv=s=x:p=0", path],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15,
+            )
+            value = (r.stdout or "").strip()
+            if r.returncode == 0 and value:
+                width, height, fps = value.split("x", 2)
+                return int(width), int(height), fps
+        except Exception as e:
+            logger.warning(f"[Compositor] ffprobe signature failed: {e}")
+
+    ffmpeg = resolve_binary("ffmpeg")
+    if ffmpeg:
+        try:
+            r = subprocess.run(
+                [ffmpeg, "-hide_banner", "-i", path],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15,
+            )
+            match = re.search(
+                r"(\d{2,5})x(\d{2,5}).*?(\d+(?:\.\d+)?)\s+fps",
+                r.stderr or "",
+                re.DOTALL,
+            )
+            if match:
+                width, height, fps = match.groups()
+                return int(width), int(height), fps
+        except Exception as e:
+            logger.warning(f"[Compositor] ffmpeg signature probe failed: {e}")
+
+    return None
+
+
 def has_audio_stream(path: str) -> bool:
     """检测媒体容器是否含音频流（Issue #78：不再依赖裸 ffprobe）。
 

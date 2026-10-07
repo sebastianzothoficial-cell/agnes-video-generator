@@ -687,7 +687,15 @@ DEFAULT_WORKSPACE_NAME = "默认空间"
 
 
 def _default_working_dir() -> str:
-    """默认工作目录（项目根目录下的 .working_dir）。"""
+    """Return a writable default workspace for the current runtime.
+
+    Vercel Serverless Functions have a read-only deployment filesystem; only
+    /tmp is writable. Durable task state and artifacts are mirrored to
+    Supabase, so Vercel uses an ephemeral /tmp workspace for intermediate files.
+    Local development keeps the historical project-local .working_dir.
+    """
+    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+        return os.path.join(tempfile.gettempdir(), "agnes-video-generator", ".working_dir")
     return os.path.join(_PROJECT_ROOT, ".working_dir")
 
 

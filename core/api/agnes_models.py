@@ -129,7 +129,7 @@ def fetch_model_catalog(api_key: str) -> dict[str, Any]:
             "status_code": None,
         }
 
-    endpoint = f"{get_base_url_for_key(api_key)}/models?all=true"
+    endpoint = f"{get_base_url_for_key(api_key)}/models"
     try:
         resp = requests.get(
             endpoint,

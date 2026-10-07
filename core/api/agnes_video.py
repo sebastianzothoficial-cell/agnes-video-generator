@@ -488,7 +488,7 @@ class AgnesVideoAPI:
         )
         while True:
             # M2: 每次轮询前检查停止信号
-            if self.shutdown_event and self.shutdown_event.is_set():
+            if self._is_cancelled():
                 raise VideoTaskCancelled("Video generation cancelled by user")
 
             elapsed = asyncio.get_event_loop().time() - start_time
@@ -510,7 +510,7 @@ class AgnesVideoAPI:
                 if poll_count % 10 == 0:
                     logger.info(f"[AgnesVideo] Polling video {video_id[:16]}... (poll #{poll_count + 1}, elapsed {elapsed:.0f}s)")
                 # 全局限速：每次轮询都消耗一个令牌（2.3 异步原生，停止可打断）
-                await get_rate_limiter().acquire_async(self.shutdown_event)
+                await get_rate_limiter().acquire_async(self._cancel_event_for_wait())
                 # M2: 用 wait_for 包裹以支持取消；429 换 Key 立即重试（轮询也轮转 Key 分摊配额）
                 poll_attempts = 0
                 while True:
@@ -622,13 +622,13 @@ class AgnesVideoAPI:
         queue_deadline = None  # queue_started + 预算秒数
         queue_retries = 0
         while attempt < self.max_retries:
-            if self.shutdown_event and self.shutdown_event.is_set():
+            if self._is_cancelled():
                 raise VideoTaskCancelled("Video generation cancelled by user")
             try:
                 logger.info(f"[AgnesVideo] Submitting {mode_desc} (attempt {attempt + 1}/{self.max_retries})...")
                 # 视频提交独立限速桶（服务端 1/min 硬限制，不与 chat/image 共享配额；
                 # 2.3 异步原生，停止可打断）
-                await get_video_submit_limiter().acquire_async(self.shutdown_event)
+                await get_video_submit_limiter().acquire_async(self._cancel_event_for_wait())
                 # M2: 缩短读超时从 180s 到 60s，使 stop() 更快生效
                 key = ring.next()
                 resp = await asyncio.wait_for(

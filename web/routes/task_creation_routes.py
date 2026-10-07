@@ -33,9 +33,9 @@ from models.task import (
     ManuscriptVideoTask,
     PoetryVideoTask,
     SimpleVideoTask,
+    StepStatus,
     SubtitleConfig,
     SubtitleStyle,
-    StepStatus,
     TaskType,
     VideoMode,
 )

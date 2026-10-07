@@ -18,8 +18,10 @@ async def process_agnes_task(message: dict) -> None:
     durable = supabase_store.get_task(task_id)
     if not durable:
         raise RuntimeError(f"Durable task {task_id} was not found")
-    dir_name = str((durable.get("config") or {}).get("dir_name") or task_id)
+    config = durable.get("config") or {}
+    dir_name = str(config.get("dir_name") or task_id)
     tm = TaskManager(task_id, dir_name=dir_name)
+    supabase_store.download_input_files(task_id, config.get("input_files") or {})
     state = tm.load()
     if state is None:
         raise RuntimeError(f"Unable to hydrate task {task_id} from Supabase")

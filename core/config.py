@@ -1227,8 +1227,10 @@ VIDEO_MODEL_CAPABILITIES = {
             "sizes": ["720P", "1080P", "1K", "2K"],
         },
         "supports_negative": False,
-        "max_ref_images": 5,  # 第 6 张起 $0.005/张
+        "max_ref_images": 8,  # API 2.5 允许最多 8 张；第 6 张起按文档计费
         "supports_ref_video": True,
+        "max_ref_audio": 3,
+        "max_ref_videos": 1,
         "desc": {
             "zh": "新一代付费模型。支持 720P、1080P、1K、2K、4–12 秒、首尾帧、图片/音频/视频参考；不支持负面提示词。",
             "en": "New paid model. Up to 2K, 4–12s, supports reference videos; no negative prompt.",
@@ -1251,6 +1253,8 @@ VIDEO_MODEL_CAPABILITIES = {
         },
         "supports_negative": False,
         "max_ref_images": 5,
+        "max_ref_audio": 3,
+        "max_ref_videos": 0,
         "supports_ref_video": False,
         "desc": {
             "zh": "免费新版（限时免费）。固定 720P、4–12 秒、首尾帧、图片参考最多 5 张；不支持负面提示词与参考视频。比例保真。",

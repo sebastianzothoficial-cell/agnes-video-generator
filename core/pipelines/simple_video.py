@@ -15,6 +15,7 @@ from core.config import DEFAULT_TEXT_MODEL
 from core.pipelines import BasePipeline, PipelineShutdown
 from models.task import SimpleVideoTask, StepStatus, VideoMode
 from core.prompting import build_video_prompt
+from core.api.openrouter_planner import OpenRouterPlanningError, plan_video
 from utils.network import (
     describe_network_error,
     describe_queue_full_error,
@@ -167,16 +168,36 @@ class SimpleVideoPipeline(BasePipeline):
 
         # Deterministic prompt architecture. Keep the user original prompt
         # untouched while storing the processed prompt used by the provider.
-        spec = build_video_prompt(
-            self._state.prompt,
-            style=self._state.system_prompt.strip() or "cinematic",
-            scene="single coherent scene",
-            subject="the main subject described by the original prompt",
-            action="the main action described by the original prompt",
-            reference_consistency="preserve the identity/composition of the supplied reference"
-            if ref_images or first_frame or last_frame else "",
-        )
-        processed_prompt = spec.render()
+        # OpenRouter is the real planning layer for simple text generation.
+        # If configured, its validated plan becomes the Agnes request; secrets stay server-side.
+        if not ref_images and not first_frame and not last_frame:
+            try:
+                plan = await asyncio.to_thread(plan_video, self._state.prompt)
+                processed_prompt = plan.prompt
+                self._state.duration = plan.duration
+                self._state.video_size = plan.size
+                self._state.generation_metadata = {
+                    "planner": "openrouter",
+                    "planner_model": plan.model,
+                    "title": plan.title,
+                    "negative_prompt": plan.negative_prompt,
+                    "aspect_ratio": plan.aspect_ratio,
+                }
+                self._state.negative_prompt = plan.negative_prompt or self._state.negative_prompt
+                logger.info("[Simple] OpenRouter plan accepted; sending prompt to Agnes")
+            except OpenRouterPlanningError as exc:
+                logger.error("[Simple] OpenRouter planning failed: %s", exc)
+                raise RuntimeError(f"OpenRouter: {exc}") from exc
+        else:
+            spec = build_video_prompt(
+                self._state.prompt,
+                style=self._state.system_prompt.strip() or "cinematic",
+                scene="single coherent scene",
+                subject="the main subject described by the original prompt",
+                action="the main action described by the original prompt",
+                reference_consistency="preserve the identity/composition of the supplied reference",
+            )
+            processed_prompt = spec.render()
         self._state.prompt_original = self._state.prompt
         self._state.prompt_processed = processed_prompt
         self._state.generation_metadata = {

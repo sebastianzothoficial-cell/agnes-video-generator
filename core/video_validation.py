@@ -160,6 +160,7 @@ def validate_video_request(
     video_size: str | None = None,
     aspect_ratio: str | None = None,
     has_negative_prompt: bool = False,
+    media_pending: bool = False,
 ) -> dict[str, Any]:
     """Validate a video request before a durable task is created."""
     model = (model or "").strip()
@@ -214,7 +215,7 @@ def validate_video_request(
                 status_code=422,
                 detail=f"No es posible generar esta escena con '{model}' porque no soporta image-to-video/reference.",
             )
-        if not has_first_or_reference:
+        if not has_first_or_reference and not media_pending:
             raise HTTPException(
                 status_code=422,
                 detail="El modo image-to-video requiere al menos una imagen de referencia.",
@@ -231,7 +232,7 @@ def validate_video_request(
                 status_code=422,
                 detail=f"No es posible generar esta escena con '{model}' porque no soporta keyframes.",
             )
-        if not has_any_media:
+        if not has_any_media and not media_pending:
             raise HTTPException(
                 status_code=422,
                 detail="El modo keyframes requiere first_frame, last_frame o ambos.",
@@ -294,5 +295,6 @@ def validate_video_request(
             "video_size": video_size,
             "aspect_ratio": aspect_ratio,
             "has_negative_prompt": has_negative_prompt,
+            "media_pending": media_pending,
         },
     }

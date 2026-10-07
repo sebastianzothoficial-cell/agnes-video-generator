@@ -52,6 +52,7 @@ class TaskManager:
             os.path.join(self.task_dir, "task_state.json") if self.task_dir else None
         )
         self._state: Optional[BaseTaskState] = None
+        self._input_files: dict[str, str] = {}
 
     def _ensure_dir(self):
         if not self.task_dir:
@@ -63,6 +64,7 @@ class TaskManager:
         self._ensure_dir()
         self._state = state
         self._state.task_id = self.task_id
+        self._input_files = supabase_store.sync_input_files(self._state)
         # v6.1 二期：任务创建时间戳（诊断端点时间窗口匹配兜底用）
         now = datetime.now().isoformat(timespec="seconds")
         if not self._state.created_at:
@@ -102,6 +104,9 @@ class TaskManager:
             # v2.0：通过 parse_task_state 工厂函数反序列化
             # 旧数据没有 task_type，parse_task_state 会默认设为 CREATIVE
             self._state = parse_task_state(data)
+            durable_config = (durable or {}).get("config", {}) if isinstance(durable, dict) else {}
+            self._input_files = durable_config.get("input_files", {}) or {}
+
 
             # v3.0 向后兼容：旧数据 audio_config 中含有 subtitle_style（Pydantic v2
             # extra='ignore' 会静默丢弃，所以需从原始 data 中提取），迁移为独立
@@ -161,7 +166,7 @@ class TaskManager:
                     # 诊断端点 / 前端展示补偿，原始 JSON 不追求人工可读
                     json.dump(self._state.model_dump(), f, ensure_ascii=False)
                 os.replace(tmp_path, self._task_file)
-                supabase_store.upsert_task(self._state, dir_name=self.dir_name)
+                supabase_store.upsert_task(self._state, dir_name=self.dir_name, input_files=self._input_files)
                 if self._state.status == StepStatus.COMPLETED:
                     supabase_store.upload_final_video(self._state, dir_name=self.dir_name)
             except Exception:

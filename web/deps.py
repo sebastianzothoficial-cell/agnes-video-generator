@@ -31,16 +31,17 @@ def create_pipeline_for_type(
     api_key: str,
     task_id: str,
     dir_name: str,
+    selected_models: dict[str, str] | None = None,
 ) -> BasePipeline:
     """根据任务类型创建对应的 Pipeline 实例。
 
     从配置读取选中的模型（文本/图像/视频），注入各 Pipeline，
     使界面选择的模型生效。
     """
-    models = get_selected_models()
-    text_model = models["text"]
-    image_model = models["image"]
-    video_model = models["video"]
+    models = selected_models or get_selected_models()
+    text_model = models.get("text") or get_selected_models()["text"]
+    image_model = models.get("image") or get_selected_models()["image"]
+    video_model = models.get("video") or get_selected_models()["video"]
     shutdown_event = app_state.shutdown_event
 
     if task_type == TaskType.SIMPLE:

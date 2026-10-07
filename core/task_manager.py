@@ -184,9 +184,34 @@ class TaskManager:
                     # 诊断端点 / 前端展示补偿，原始 JSON 不追求人工可读
                     json.dump(self._state.model_dump(), f, ensure_ascii=False)
                 os.replace(tmp_path, self._task_file)
-                supabase_store.upsert_task(self._state, dir_name=self.dir_name, input_files=self._input_files)
+
+                persisted = supabase_store.upsert_task(
+                    self._state,
+                    dir_name=self.dir_name,
+                    input_files=self._input_files,
+                )
+                is_vercel = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
+                if is_vercel and supabase_store.enabled() and not persisted:
+                    raise RuntimeError(
+                        f"Durable task persistence failed for {self.task_id}"
+                    )
+
                 if self._state.status == StepStatus.COMPLETED:
-                    supabase_store.upload_final_video(self._state, dir_name=self.dir_name)
+                    final_path = str(getattr(self._state, "final_video_file", "") or "")
+                    final_url = supabase_store.upload_final_video(
+                        self._state, dir_name=self.dir_name
+                    )
+                    if is_vercel and final_path and os.path.isfile(final_path) and not final_url:
+                        logger.error(
+                            "[TaskManager] Final artifact upload failed for completed task %s",
+                            self.task_id,
+                        )
+                        self._state.status = StepStatus.FAILED
+                        self._state.current_status = "failed"
+                        self._state.current_message = (
+                            "No se pudo guardar el video final en almacenamiento durable."
+                        )
+                        self._save()
             except Exception:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)

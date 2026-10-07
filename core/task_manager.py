@@ -82,6 +82,7 @@ class TaskManager:
         注意：load 是读操作，不调用 _ensure_dir()，避免为不存在的任务创建空目录。
         """
         data = None
+        durable = None
         if self._task_file and os.path.exists(self._task_file):
             try:
                 with open(self._task_file, "r", encoding="utf-8") as f:

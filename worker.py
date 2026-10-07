@@ -53,7 +53,13 @@ async def process_agnes_task(message: dict) -> None:
             tm.update_state(status=StepStatus.FAILED, current_status="failed",
                             current_message="AGNES API key is not configured")
             return
-        pipeline = deps.create_pipeline_for_type(state.task_type, api_key, task_id, dir_name)
+        pipeline = deps.create_pipeline_for_type(
+            state.task_type,
+            api_key,
+            task_id,
+            dir_name,
+            selected_models=getattr(state, "selected_models", None),
+        )
         app_state.active_pipelines[task_id] = pipeline
         logger.info("[Queue] Starting durable Agnes task %s", task_id)
         stop_watcher = asyncio.create_task(_watch_durable_stop(task_id, pipeline))

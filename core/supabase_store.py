@@ -103,6 +103,20 @@ def upsert_task(state: Any, *, dir_name: str = "") -> bool:
         return False
 
 
+def get_task(task_id: str) -> dict | None:
+    """Load the complete durable task payload by the original Agnes task id."""
+    if not enabled():
+        return None
+    try:
+        rows = _request(
+            "GET",
+            f"{TABLE}?select=task_key,input_payload,config&task_key=eq.{task_id}",
+        ) or []
+        return rows[0] if rows else None
+    except Exception:
+        logger.warning("[Supabase] Task load failed for %s", task_id, exc_info=True)
+        return None
+
 def list_tasks() -> list[dict]:
     if not enabled():
         return []

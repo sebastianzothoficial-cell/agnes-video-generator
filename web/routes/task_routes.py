@@ -311,6 +311,23 @@ async def resume_task(task_id: str):
 
 @router.post("/api/tasks/{task_id}/stop")
 async def stop_task(task_id: str):
+    # Vercel has no shared process memory between the request and queue worker.
+    # Persist cancellation before acknowledging a stop for queued work.
+    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+        dir_name = helpers.find_dir_name(task_id)
+        tm = TaskManager(task_id, dir_name=dir_name)
+        state = tm.load()
+        if not state:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if state.status in (StepStatus.COMPLETED, StepStatus.FAILED):
+            raise HTTPException(status_code=400, detail="Task is not running")
+        tm.update_state(
+            status=StepStatus.FAILED,
+            current_status="cancelled",
+            current_message="Task cancelled by user before execution.",
+        )
+        return {"ok": True, "task_id": task_id, "cancelled": True}
+
     if task_id not in app_state.active_pipelines and task_id not in app_state._queued_tasks:
         raise HTTPException(status_code=400, detail="Task is not running")
 

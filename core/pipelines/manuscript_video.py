@@ -51,7 +51,7 @@ def split_manuscript_text(text: str) -> List[str]:
         1. 先按换行符 (``\\n``) 切分为粗段落。
         2. 每个粗段落再按中文句末标点 (``。！？``) 切分为候选句。
         3. 对候选句进行贪心合并：累积时长 <= 12s，最短 >= 5s。
-        4. 短句 (< 5s) 合并到前一个段落；长句 (> 12s) 保持原样不拆分。
+        4. 短句 (< 5s) 合并到前一个段落；长句 (> 12s) 会在派生段落中安全拆分。
 
     Args:
         text: 待拆分的稿件文本。
@@ -75,6 +75,35 @@ def split_manuscript_text(text: str) -> List[str]:
 
     if not candidate_sentences:
         return []
+
+    # Keep every generated video segment inside the 2.5-series 4–12s contract.
+    # Long source sentences are split only in the derived segments; the original
+    # manuscript remains untouched in state.manuscript_text.
+    max_chars = max(int(_MAX_SEGMENT_DURATION * chars_per_sec), 1)
+    normalized_candidates: List[str] = []
+    for sentence in candidate_sentences:
+        if duration_len(sentence) / chars_per_sec <= _MAX_SEGMENT_DURATION:
+            normalized_candidates.append(sentence)
+            continue
+        if chars_per_sec <= 6:
+            for start in range(0, len(sentence), max_chars):
+                normalized_candidates.append(sentence[start:start + max_chars].strip())
+        else:
+            words = sentence.split()
+            chunk: List[str] = []
+            chunk_len = 0
+            for word in words:
+                extra = len(word) + (1 if chunk else 0)
+                if chunk and chunk_len + extra > max_chars:
+                    normalized_candidates.append(" ".join(chunk))
+                    chunk = [word]
+                    chunk_len = len(word)
+                else:
+                    chunk.append(word)
+                    chunk_len += extra
+            if chunk:
+                normalized_candidates.append(" ".join(chunk))
+    candidate_sentences = [s for s in normalized_candidates if s]
 
     # Step 3: greedy merge.
     merged: List[str] = []

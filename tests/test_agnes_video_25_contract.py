@@ -65,3 +65,71 @@ async def test_flash_forces_720p(monkeypatch):
     )
 
     assert captured["payload"]["size"] == "720P"
+
+
+@pytest.mark.asyncio
+async def test_v25_reference_payload_supports_images_audio_and_video(monkeypatch):
+    api = AgnesVideoAPI(api_key="configured", model="agnes-video-2.5")
+    captured = {}
+
+    async def fake_resolve(path):
+        return f"https://public.example/{path}"
+
+    async def fake_submit(payload, mode, progress_callback=None):
+        captured["payload"] = payload
+        return "video_test"
+
+    monkeypatch.setattr(api, "_resolve_image_ref", fake_resolve)
+    monkeypatch.setattr(api, "_submit_with_retry", fake_submit)
+    monkeypatch.setattr(module, "normalize_reference_path", lambda path, width, height: path)
+
+    await api.submit_video(
+        prompt="reference composition",
+        reference_image_paths=[f"image-{i}.png" for i in range(8)],
+        reference_audio_paths=[
+            "https://public.example/a1.mp3",
+            "https://public.example/a2.mp3",
+            "https://public.example/a3.mp3",
+        ],
+        reference_video_path="https://public.example/ref.mp4",
+        generation_mode="reference",
+        duration=5,
+        width=1280,
+        height=720,
+        video_size="1080P",
+    )
+
+    payload = captured["payload"]
+    assert len(payload["images"]) == 8
+    assert len(payload["audios"]) == 3
+    assert payload["videos"] == ["https://public.example/ref.mp4"]
+
+
+@pytest.mark.asyncio
+async def test_flash_rejects_reference_video(monkeypatch):
+    api = AgnesVideoAPI(api_key="configured", model="agnes-video-2.5-flash")
+
+    with pytest.raises(ValueError, match="does not support reference videos"):
+        await api.submit_video(
+            prompt="flash",
+            generation_mode="reference",
+            reference_video_path="https://public.example/ref.mp4",
+            duration=5,
+            width=1280,
+            height=720,
+        )
+
+
+@pytest.mark.asyncio
+async def test_v25_rejects_more_than_three_reference_audio(monkeypatch):
+    api = AgnesVideoAPI(api_key="configured", model="agnes-video-2.5")
+
+    with pytest.raises(ValueError, match="at most 3 audio"):
+        await api.submit_video(
+            prompt="audio refs",
+            generation_mode="reference",
+            reference_audio_paths=[f"https://public.example/a{i}.mp3" for i in range(4)],
+            duration=5,
+            width=1280,
+            height=720,
+        )

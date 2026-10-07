@@ -77,6 +77,7 @@ def upsert_task(state: Any, *, dir_name: str = "") -> bool:
         progress = float(data.get("current_progress") or 0)
         row = {
             "id": _uuid_for_task(state.task_id),
+            "task_key": state.task_id,
             "workspace_id": None,
             "project_id": None,
             "task_type": str(data.get("task_type", "")),
@@ -114,7 +115,7 @@ def list_tasks() -> list[dict]:
         for row in rows:
             config = row.get("config") or {}
             result.append({
-                "task_id": _task_id_from_uuid(row["id"]),
+                "task_id": row.get("task_key") or _task_id_from_uuid(row["id"]),
                 "dir_name": config.get("dir_name", ""),
                 "task_type": row.get("task_type", "creative"),
                 "creative_name": row.get("title", ""),

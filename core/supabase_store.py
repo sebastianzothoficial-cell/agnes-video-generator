@@ -13,9 +13,15 @@ DEFAULT_SUPABASE_URL = "https://vfvfrwiyfvsbqhltdtzz.supabase.co"
 DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_icnJzBwsKaGZa2aK4aKGVA_vB2-bAEB"
 
 def _config() -> tuple[str, str] | None:
+    if os.getenv("AGNES_DISABLE_SUPABASE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return None
     url = (os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL).strip().rstrip("/")
-    key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_SECRET_KEY")
-           or os.getenv("SUPABASE_ANON_KEY") or DEFAULT_SUPABASE_ANON_KEY).strip()
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_SECRET_KEY")
+        or os.getenv("SUPABASE_ANON_KEY")
+        or DEFAULT_SUPABASE_ANON_KEY
+    ).strip()
     return (url, key) if url and key else None
 
 def enabled() -> bool:
@@ -23,13 +29,15 @@ def enabled() -> bool:
 
 def _headers(key: str, *, prefer: str | None = None) -> dict[str, str]:
     headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    if prefer: headers["Prefer"] = prefer
+    if prefer:
+        headers["Prefer"] = prefer
     return headers
 
 def _request(method: str, path: str, *, payload: Any = None, timeout: float = 8.0,
              prefer: str | None = None) -> Any:
     cfg = _config()
-    if not cfg: return None
+    if not cfg:
+        return None
     url, key = cfg
     response = requests.request(method, f"{url}/rest/v1/{path}",
                                 headers=_headers(key, prefer=prefer), json=payload, timeout=timeout)
@@ -37,7 +45,8 @@ def _request(method: str, path: str, *, payload: Any = None, timeout: float = 8.
     return response.json() if response.content else None
 
 def upsert_task(state: Any, *, dir_name: str = "", input_files: dict[str, str] | None = None) -> bool:
-    if not enabled(): return False
+    if not enabled():
+        return False
     try:
         data = state.model_dump(mode="json")
         status = data.get("status")
@@ -70,7 +79,8 @@ def upload_final_video(state: Any, *, dir_name: str = "") -> str | None:
     cfg = _config()
     if not cfg: return None
     path = str(getattr(state, "final_video_file", "") or "")
-    if not path or not os.path.isfile(path): return None
+    if not path or not os.path.isfile(path):
+        return None
     try:
         url, key = cfg
         object_path = f"{state.task_id}/final_video.mp4"
@@ -137,7 +147,8 @@ def release_task_claim(task_id: str) -> bool:
         logger.warning("[Supabase] Task claim release failed for %s", task_id, exc_info=True)
         return False
 def get_task(task_id: str) -> dict | None:
-    if not enabled(): return None
+    if not enabled():
+        return None
     try:
         rows = _request("GET", f"{TABLE}?select=task_key,input_payload,config,status,updated_at&task_key=eq.{task_id}") or []
         return rows[0] if rows else None
@@ -146,7 +157,8 @@ def get_task(task_id: str) -> dict | None:
         return None
 
 def list_tasks() -> list[dict]:
-    if not enabled(): return []
+    if not enabled():
+        return []
     try:
         rows = _request("GET", f"{TABLE}?select=id,task_key,task_type,status,title,config,created_at,updated_at&order=created_at.desc") or []
         return [{"task_id": row.get("task_key") or _task_id_from_uuid(row["id"]),

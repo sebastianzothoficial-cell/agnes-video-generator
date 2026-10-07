@@ -4,6 +4,8 @@ import asyncio
 import contextlib
 import logging
 import os
+import uuid
+from datetime import timedelta
 from core import supabase_store
 from core.config import get_api_key
 
@@ -63,6 +65,7 @@ async def process_agnes_task(message: dict) -> None:
                 current_status="failed",
                 current_message="No se pudieron restaurar todos los archivos de entrada.",
             )
+            supabase_store.release_task_claim(task_id)
             return
         if not supabase_store.download_input_files(task_id, input_files, state=state):
             raise RuntimeError(f"Unable to restore durable input files for task {task_id}")
@@ -73,6 +76,7 @@ async def process_agnes_task(message: dict) -> None:
                 current_status="failed",
                 current_message="AGNES API key is not configured",
             )
+            supabase_store.release_task_claim(task_id)
             return
         pipeline = deps.create_pipeline_for_type(
             state.task_type,
@@ -125,7 +129,7 @@ async def process_agnes_task(message: dict) -> None:
                 await send(
                     AGNES_QUEUE_TOPIC,
                     {"task_id": task_id},
-                    idempotency_key=f"agnes-task-resume:{task_id}:{state.updated_at}",
+                    idempotency_key=f"agnes-task-resume:{task_id}:{uuid.uuid4().hex}",
                     retention=timedelta(days=1),
                     delay=timedelta(seconds=WORKER_CONTINUATION_DELAY_SECONDS),
                 )
@@ -150,7 +154,7 @@ async def _watch_durable_stop(task_id: str, pipeline) -> None:
     while True:
         await asyncio.sleep(2)
         durable = supabase_store.get_task(task_id)
-        if durable and str(durable.get("status") or "").lower() == "pending":
+        if durable and str(durable.get("status") or "").lower() == "pending" and str(durable.get("current_status") or "").lower() == "cancelled":
             logger.info("[Queue] Durable stop requested for task %s", task_id)
             pipeline.stop()
             return

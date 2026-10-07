@@ -107,7 +107,7 @@ def claim_task(task_id: str) -> bool:
         ) or []
         if rows:
             return True
-        # The configured FastAPI function maxDuration is 900s. A 20-minute
+        # The configured FastAPI function maxDuration is 300s. A 20-minute
         # stale threshold safely recovers a hard-crashed worker without
         # allowing normal 15-minute executions to be claimed twice.
         stale_before = (now - timedelta(minutes=20)).isoformat()

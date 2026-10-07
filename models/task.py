@@ -223,6 +223,11 @@ class BaseTaskState(BaseModel):
     # 旧 task_state.json 缺此字段时 Pydantic 自动补默认 ``zh``，向后兼容。
     ui_language: str = "zh"
 
+    # Modelos seleccionados en la instancia HTTP. Se persisten con la tarea
+    # porque el worker de Vercel puede ejecutarse en otra instancia sin el
+    # mismo filesystem/config temporal.
+    selected_models: Dict[str, str] = Field(default_factory=dict)
+
 
 class SimpleVideoTask(BaseTaskState):
     """简单视频任务（类型 1）

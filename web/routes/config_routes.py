@@ -452,6 +452,20 @@ async def list_models(refresh: bool = False):
     cached_catalog = _MODEL_CACHE.get("catalog")
     if (
         not refresh
+        and cached_catalog is None
+        and _MODEL_CACHE.get("models") is not None
+        and (now - _MODEL_CACHE.get("ts", 0.0)) < _MODEL_CACHE.get("ttl", 300)
+    ):
+        cached_catalog = {
+            "models": _MODEL_CACHE.get("models"),
+            "model_details": {},
+            "source": "fallback",
+            "synced": False,
+            "error": "legacy model cache",
+            "status_code": None,
+        }
+    if (
+        not refresh
         and cached_catalog is not None
         and (now - _MODEL_CACHE.get("ts", 0.0)) < _MODEL_CACHE.get("ttl", 300)
     ):

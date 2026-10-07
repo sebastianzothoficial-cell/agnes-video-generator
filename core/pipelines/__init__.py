@@ -287,8 +287,14 @@ class BasePipeline(ABC):
         return self.shutdown_event is not None and self.shutdown_event.is_set()
 
     def stop(self):
-        """请求流水线在下一个检查点停止。"""
+        """Request this pipeline to stop and interrupt any provider wait."""
         self._stop_event.set()
+        # AgnesVideoAPI has its own cancellation event so stopping one task
+        # never mutates the process-wide shutdown event shared by other tasks.
+        for attr in ("video_api", "video_generator"):
+            api = getattr(self, attr, None)
+            if api is not None and hasattr(api, "cancel_event"):
+                api.cancel_event = self._stop_event
 
     def _get_pausable_steps(self) -> set[str]:
         """当前任务实际可暂停的步骤（v6.0 P3）。

@@ -2,19 +2,20 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
-// 构建产物直接输出到 static/，base=/static/，与后端 StaticFiles mount 完全对齐。
-// emptyOutDir=false 保留 static/ 下后端依赖的 favicon.ico / icon.png / generated/ 等资源。
+// Local/Docker builds keep the backend-served static/ layout.
+// On Vercel, frontend/ is an independent service, so Vite must emit dist/
+// and use root-relative asset URLs.
 export default defineConfig({
   plugins: [vue()],
-  base: '/static/',
+  base: process.env.VERCEL ? '/' : '/static/',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   build: {
-    outDir: '../static',
-    emptyOutDir: false,
+    outDir: process.env.VERCEL ? 'dist' : '../static',
+    emptyOutDir: process.env.VERCEL ? true : false,
     assetsDir: 'assets',
     sourcemap: false,
   },

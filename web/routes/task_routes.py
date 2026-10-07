@@ -282,11 +282,29 @@ async def resume_task(task_id: str):
         logger.info("[Resume] Starting resume for task %s, type=%s, status=%s",
                     safe_log(task_id), state.task_type, state.status)
 
-        # v2.0：根据 task_type 选择对应的 Pipeline
-        pipeline = deps.create_pipeline_for_type(state.task_type, api_key, task_id, dir_name)
-        app_state.active_pipelines[task_id] = pipeline
-
-        app_state.launch_background_task(deps.run_pipeline_with_concurrency(pipeline, state, tm))
+        # Vercel: resume must be durable too. Do not attach execution to the
+        # request instance; the queue worker owns the actual pipeline lifecycle.
+        if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+            if state.status in (StepStatus.RUNNING, StepStatus.QUEUED):
+                raise HTTPException(status_code=400, detail="Task is already queued or running")
+            try:
+                from vercel.queue import send
+                await send(
+                    "agnes-video-tasks",
+                    {"task_id": task_id},
+                    idempotency_key=f"agnes-task:{task_id}",
+                    retention=timedelta(days=1),
+                )
+            except Exception as exc:
+                logger.error("[Resume] Queue dispatch failed for %s: %s", task_id, exc, exc_info=True)
+                raise HTTPException(status_code=503, detail="Pipeline queue unavailable") from exc
+        else:
+            # v2.0：根据 task_type 选择对应的 Pipeline
+            pipeline = deps.create_pipeline_for_type(state.task_type, api_key, task_id, dir_name)
+            app_state.active_pipelines[task_id] = pipeline
+            app_state.launch_background_task(
+                deps.run_pipeline_with_concurrency(pipeline, state, tm)
+            )
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
 
 

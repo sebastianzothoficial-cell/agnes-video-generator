@@ -54,7 +54,7 @@ async def process_agnes_task(message: dict) -> None:
         pipeline = deps.create_pipeline_for_type(state.task_type, api_key, task_id, dir_name)
         app_state.active_pipelines[task_id] = pipeline
         logger.info("[Queue] Starting durable Agnes task %s", task_id)
-        await deps.run_pipeline_with_concurrency(pipeline, state, tm)
+        await deps.run_pipeline_with_concurrency(pipeline, state, tm, already_claimed=True)
         logger.info("[Queue] Finished durable Agnes task %s", task_id)
     except Exception:
         # Queue is at-least-once. If the function itself fails after claiming,

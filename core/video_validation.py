@@ -67,15 +67,19 @@ def _provider_mode_support(caps: dict[str, Any]) -> tuple[bool, bool, bool]:
 
 
 def _effective_capabilities(catalog: dict[str, Any], model: str) -> dict[str, Any]:
+    """Resolve capabilities conservatively.
+
+    Provider metadata is authoritative when a field is explicitly present.
+    For known Agnes models, documented local capability metadata fills only
+    fields the provider response omitted. This avoids turning a sparse
+    /models response into a false "text-only" model while still honoring an
+    explicit provider denial.
+    """
     details = catalog.get("model_details") or {}
     detail = details.get(model) or {}
     provider_caps = detail.get("capabilities") or {}
     if not isinstance(provider_caps, dict):
         provider_caps = {}
-
-    # Agnes metadata wins whenever it actually describes a capability.
-    t2v, i2v, keyframes = _provider_mode_support(provider_caps)
-    explicit_provider = bool(provider_caps)
 
     local = get_video_model_capabilities().get(model) or {}
     local_modes = {
@@ -84,10 +88,30 @@ def _effective_capabilities(catalog: dict[str, Any], model: str) -> dict[str, An
         if isinstance(item, dict)
     }
 
-    if not explicit_provider:
-        t2v = bool(local_modes & {"t2v", "text"}) or t2v
-        i2v = bool(local_modes & {"i2v", "reference"}) or i2v
-        keyframes = bool(local_modes & {"keyframes", "keyframe"}) or keyframes
+    provider_modes = _list_cap(
+        provider_caps, "modes", "mode", "video_modes", "generation_modes"
+    )
+    provider_t2v, provider_i2v, provider_keyframes = _provider_mode_support(provider_caps)
+
+    # A sparse provider capability object can contain only {"video": true}.
+    # In that case the known Agnes model metadata supplies the missing modes.
+    provider_has_t2v = any(
+        key in provider_caps for key in ("text_to_video", "t2v", "text")
+    ) or bool(provider_modes)
+    provider_has_i2v = any(
+        key in provider_caps for key in ("image_to_video", "i2v")
+    ) or bool(provider_modes)
+    provider_has_keyframes = any(
+        key in provider_caps for key in ("keyframes", "keyframe", "first_last_frame", "first_last_frames")
+    ) or bool(provider_modes)
+
+    local_t2v = bool(local_modes & {"t2v", "text", "reference"})
+    local_i2v = bool(local_modes & {"i2v", "reference"})
+    local_keyframes = bool(local_modes & {"keyframes", "keyframe"})
+
+    t2v = provider_t2v if provider_has_t2v else local_t2v
+    i2v = provider_i2v if provider_has_i2v else local_i2v
+    keyframes = provider_keyframes if provider_has_keyframes else local_keyframes
 
     durations = provider_caps.get("durations") or provider_caps.get("duration_options")
     if not durations:
@@ -101,15 +125,29 @@ def _effective_capabilities(catalog: dict[str, Any], model: str) -> dict[str, An
     if max_refs is None:
         max_refs = local.get("max_ref_images")
 
+    resolution = local.get("resolution") or {}
+    sizes = list(resolution.get("sizes") or []) if isinstance(resolution, dict) else []
+    provider_sizes = provider_caps.get("sizes") or provider_caps.get("resolution_sizes")
+    if provider_sizes:
+        sizes = list(provider_sizes) if isinstance(provider_sizes, (list, tuple, set)) else [str(provider_sizes)]
+
+    supports_negative = (
+        provider_caps.get("supports_negative")
+        if "supports_negative" in provider_caps
+        else local.get("supports_negative")
+    )
+
     return {
         "t2v": t2v,
         "i2v": i2v,
         "keyframes": keyframes,
-        "durations": list(durations) if isinstance(durations, (list, tuple, set)) else [],
+        "durations": [int(v) for v in durations] if isinstance(durations, (list, tuple, set)) else [],
         "max_ref_images": max_refs,
+        "sizes": [str(v) for v in sizes],
+        "ratios": list(resolution.get("ratios") or []) if isinstance(resolution, dict) else [],
+        "supports_negative": bool(supports_negative),
         "provider_capabilities": provider_caps,
     }
-
 
 def validate_video_request(
     *,
@@ -119,6 +157,9 @@ def validate_video_request(
     duration: int,
     has_reference: bool = False,
     has_end_frame: bool = False,
+    video_size: str | None = None,
+    aspect_ratio: str | None = None,
+    has_negative_prompt: bool = False,
 ) -> dict[str, Any]:
     """Validate a video request before a durable task is created."""
     model = (model or "").strip()
@@ -129,6 +170,9 @@ def validate_video_request(
 
     if mode not in {"t2v", "text", "i2v", "keyframes"}:
         raise HTTPException(status_code=422, detail=f"Modo de video no soportado: {mode}.")
+
+    if duration < 1:
+        raise HTTPException(status_code=422, detail="La duración del video debe ser positiva.")
 
     if not _strict_enabled():
         return {"verified": False, "source": "local", "model": model, "mode": mode}
@@ -149,21 +193,49 @@ def validate_video_request(
         )
 
     caps = _effective_capabilities(catalog, model)
-    if mode in {"t2v", "text"} and not caps["t2v"]:
-        raise HTTPException(
-            status_code=422,
-            detail=f"No es posible generar esta escena con '{model}' porque no soporta text-to-video.",
-        )
-    if mode == "i2v" and not caps["i2v"]:
-        raise HTTPException(
-            status_code=422,
-            detail=f"No es posible generar esta escena con '{model}' porque no soporta image-to-video.",
-        )
-    if mode == "keyframes" and not caps["keyframes"]:
-        raise HTTPException(
-            status_code=422,
-            detail=f"No es posible generar esta escena con '{model}' porque no soporta keyframes.",
-        )
+    has_first_or_reference = bool(has_reference)
+    has_any_media = bool(has_reference or has_end_frame)
+
+    if mode in {"t2v", "text"}:
+        if not caps["t2v"]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No es posible generar esta escena con '{model}' porque no soporta text-to-video.",
+            )
+        if has_any_media:
+            raise HTTPException(
+                status_code=422,
+                detail="El modo text-to-video no acepta imágenes de referencia ni frames.",
+            )
+
+    if mode == "i2v":
+        if not caps["i2v"]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No es posible generar esta escena con '{model}' porque no soporta image-to-video/reference.",
+            )
+        if not has_first_or_reference:
+            raise HTTPException(
+                status_code=422,
+                detail="El modo image-to-video requiere al menos una imagen de referencia.",
+            )
+        if has_end_frame:
+            raise HTTPException(
+                status_code=422,
+                detail="Image-to-video no acepta un end frame; usa el modo keyframes.",
+            )
+
+    if mode == "keyframes":
+        if not caps["keyframes"]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No es posible generar esta escena con '{model}' porque no soporta keyframes.",
+            )
+        if not has_any_media:
+            raise HTTPException(
+                status_code=422,
+                detail="El modo keyframes requiere first_frame, last_frame o ambos.",
+            )
 
     durations = caps["durations"]
     if durations and duration not in durations:
@@ -172,8 +244,28 @@ def validate_video_request(
             detail=f"El modelo '{model}' no admite {duration}s. Duraciones disponibles: {durations}.",
         )
 
+    sizes = caps["sizes"]
+    if video_size and sizes and video_size not in sizes:
+        raise HTTPException(
+            status_code=422,
+            detail=f"El modelo '{model}' no admite la resolución '{video_size}'. Opciones: {sizes}.",
+        )
+
+    ratios = caps["ratios"]
+    if aspect_ratio and ratios and aspect_ratio not in ratios:
+        raise HTTPException(
+            status_code=422,
+            detail=f"El modelo '{model}' no admite el aspect ratio '{aspect_ratio}'. Opciones: {ratios}.",
+        )
+
+    if has_negative_prompt and not caps["supports_negative"]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"El modelo '{model}' no admite negative prompt.",
+        )
+
     max_refs = caps["max_ref_images"]
-    ref_count = int(bool(has_reference)) + int(bool(has_end_frame))
+    ref_count = int(bool(has_reference)) if mode == "i2v" else 0
     if max_refs is not None and ref_count > int(max_refs):
         raise HTTPException(
             status_code=422,
@@ -190,5 +282,11 @@ def validate_video_request(
             "t2v": caps["t2v"],
             "i2v": caps["i2v"],
             "keyframes": caps["keyframes"],
+        },
+        "parameters": {
+            "duration": duration,
+            "video_size": video_size,
+            "aspect_ratio": aspect_ratio,
+            "has_negative_prompt": has_negative_prompt,
         },
     }

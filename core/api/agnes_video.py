@@ -871,9 +871,14 @@ class AgnesVideoAPI:
         seed: Optional[int] = None,
         negative_prompt: Optional[str] = None,
         progress_callback=None,
+        generation_mode: Optional[str] = None,
+        first_frame_path: Optional[str] = None,
+        last_frame_path: Optional[str] = None,
         **kwargs,
     ) -> str:
-        # 2.5 系列模型（v6.2）：新参数协议（mode/seconds/size/aspect_ratio）
+        # 2.5 系列模型（v6.2）：新参数协议（mode/seconds/size/aspect_ratio）。
+        # generation_mode is explicit so keyframes never get silently converted
+        # into image-reference generation.
         if is_v25_video_model(self.model):
             return await self._submit_video_v25(
                 prompt=prompt,
@@ -883,6 +888,9 @@ class AgnesVideoAPI:
                 height=height,
                 seed=seed,
                 progress_callback=progress_callback,
+                generation_mode=generation_mode,
+                first_frame_path=first_frame_path,
+                last_frame_path=last_frame_path,
                 **kwargs,
             )
         num_frames, frame_rate = self._get_frame_config(duration, width, height)
@@ -947,60 +955,94 @@ class AgnesVideoAPI:
         height: int = 720,
         seed: Optional[int] = None,
         progress_callback=None,
+        generation_mode: Optional[str] = None,
+        first_frame_path: Optional[str] = None,
+        last_frame_path: Optional[str] = None,
         **kwargs,
     ) -> str:
-        """2.5 / 2.5-flash 新协议提交：mode / seconds / size / aspect_ratio。
+        """Submit Agnes Video 2.5/Flash using the documented mode contract.
 
-        与 v2.0 的关键差异：
-        - size 固定 720P（flash）或 720P/960P/2K（2.5）；不传 width/height/num_frames
-        - seconds 为字符串 "4"–"12"
-        - 单参考图 → reference(images)；多图 → keyframe(first_frame + last_frame)
-        - 不支持 negative_prompt（忽略）
+        text      -> no media
+        reference -> images/audios/videos
+        keyframe  -> first_frame and/or last_frame
+
+        Local input paths are resolved to publicly reachable URLs before the
+        request because Agnes fetches media asynchronously after submission.
         """
-        # 时长：duration(秒) → seconds 字符串（4–12，超界截断）
         secs = int(duration) if duration else 5
-        seconds = str(max(4, min(secs, 12)))
-        # 分辨率：flash 固定 720P；2.5 用 video_size 参数（缺省 720P）
+        if secs < 4 or secs > 12:
+            raise ValueError("Agnes Video 2.5 duration must be between 4 and 12 seconds")
+        seconds = str(secs)
+
         size = kwargs.get("video_size") or "720P"
         if self.model == "agnes-video-2.5-flash":
             size = "720P"
+        elif size not in {"720P", "1080P", "1K", "2K"}:
+            raise ValueError(f"Unsupported Agnes Video 2.5 size: {size}")
+
         aspect_ratio = self._width_height_to_aspect_ratio(width, height)
+        mode = (generation_mode or "").strip().lower()
+        if not mode:
+            if first_frame_path or last_frame_path:
+                mode = "keyframe"
+            elif reference_image_paths:
+                mode = "reference"
+            else:
+                mode = "text"
+
+        if mode not in {"text", "reference", "keyframe"}:
+            raise ValueError(f"Unsupported Agnes Video 2.5 generation mode: {mode}")
 
         payload: dict = {
             "model": self.model,
             "prompt": prompt,
-            "mode": "text",
+            "mode": mode,
             "seconds": seconds,
             "size": size,
             "aspect_ratio": aspect_ratio,
+            "n": 1,
         }
         if seed is not None:
             payload["seed"] = seed
 
-        # 参考图解析（与 v2.0 一致：归一化 + 上传为公开 URL）
-        resolved_refs = []
-        for p in reference_image_paths:
-            norm = await asyncio.to_thread(normalize_reference_path, p, width, height)
-            resolved_refs.append(await self._resolve_image_ref(norm))
-        n_refs = len(resolved_refs)
-
-        if n_refs == 1:
-            payload["mode"] = "reference"
-            payload["images"] = resolved_refs
-            mode_desc = "reference (1 image)"
-        elif n_refs >= 2:
-            # v6.2.1: Agnes 2.5 系列 keyframe 模式固定输出 704x704 正方形
-            # （忽略 aspect_ratio，竖屏/横屏画面会被拉伸，人物显宽）。
-            # 降级为 reference 模式（多图参考，≤5 张），输出遵循 aspect_ratio。
-            payload["mode"] = "reference"
-            payload["images"] = resolved_refs[:5]
-            mode_desc = f"reference ({n_refs} images, keyframe fallback)"
+        if mode == "text":
+            if reference_image_paths or first_frame_path or last_frame_path:
+                raise ValueError("Agnes text mode does not accept reference media")
+        elif mode == "keyframe":
+            if reference_image_paths:
+                raise ValueError("Agnes keyframe mode does not accept images[]")
+            if not first_frame_path and not last_frame_path:
+                raise ValueError("Agnes keyframe mode requires first_frame or last_frame")
+            if first_frame_path:
+                payload["first_frame"] = await self._resolve_image_ref(
+                    await asyncio.to_thread(normalize_reference_path, first_frame_path, width, height)
+                )
+            if last_frame_path:
+                payload["last_frame"] = await self._resolve_image_ref(
+                    await asyncio.to_thread(normalize_reference_path, last_frame_path, width, height)
+                )
         else:
-            mode_desc = "text-to-video"
+            if first_frame_path or last_frame_path:
+                raise ValueError("Agnes reference mode does not accept first_frame/last_frame")
+            resolved_refs = []
+            for p in reference_image_paths[:8]:
+                norm = await asyncio.to_thread(normalize_reference_path, p, width, height)
+                resolved_refs.append(await self._resolve_image_ref(norm))
+            if not resolved_refs:
+                raise ValueError("Agnes reference mode requires at least one image reference")
+            max_images = 5 if self.model == "agnes-video-2.5-flash" else 8
+            if len(resolved_refs) > max_images:
+                raise ValueError(
+                    f"{self.model} accepts at most {max_images} image reference(s)"
+                )
+            payload["images"] = resolved_refs
 
-        logger.info(f"[AgnesVideo] {mode_desc}: {prompt[:80]}...")
-        video_id = await self._submit_with_retry(payload, mode_desc, progress_callback)
-        logger.info(f"[AgnesVideo] Video submitted: {video_id[:20]}...")
+        logger.info(
+            "[AgnesVideo] %s mode=%s duration=%ss size=%s aspect=%s prompt=%s...",
+            self.model, mode, seconds, size, aspect_ratio, prompt[:80],
+        )
+        video_id = await self._submit_with_retry(payload, mode, progress_callback)
+        logger.info("[AgnesVideo] Video submitted: %s...", video_id[:20])
         return video_id
 
     async def wait_for_video(self, video_id: str, progress_callback=None) -> VideoOutput:

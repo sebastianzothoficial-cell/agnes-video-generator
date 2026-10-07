@@ -103,6 +103,51 @@ def upsert_task(state: Any, *, dir_name: str = "") -> bool:
         return False
 
 
+
+def upload_final_video(state: Any, *, dir_name: str = "") -> str | None:
+    """Upload a completed final_video.mp4 to Supabase Storage and return its public URL."""
+    cfg = _config()
+    if not cfg:
+        return None
+    path = str(getattr(state, "final_video_file", "") or "")
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        url, key = cfg
+        object_path = f"{state.task_id}/final_video.mp4"
+        with open(path, "rb") as fh:
+            response = requests.post(
+                f"{url}/storage/v1/object/agnes-artifacts/{object_path}",
+                headers={
+                    "apikey": key,
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "video/mp4",
+                    "x-upsert": "true",
+                },
+                data=fh,
+                timeout=30,
+            )
+        response.raise_for_status()
+        public_url = f"{url}/storage/v1/object/public/agnes-artifacts/{object_path}"
+        _request(
+            "POST",
+            "agnes_artifacts?on_conflict=task_id,artifact_type",
+            payload=[{
+                "task_id": _uuid_for_task(state.task_id),
+                "artifact_type": "final_video",
+                "name": "final_video.mp4",
+                "storage_path": object_path,
+                "public_url": public_url,
+                "mime_type": "video/mp4",
+                "size_bytes": os.path.getsize(path),
+                "metadata": {"dir_name": dir_name},
+            }],
+        )
+        return public_url
+    except Exception:
+        logger.warning("[Supabase] Final video upload failed for %s", getattr(state, "task_id", "?"), exc_info=True)
+        return None
+
 def get_task(task_id: str) -> dict | None:
     """Load the complete durable task payload by the original Agnes task id."""
     if not enabled():

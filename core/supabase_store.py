@@ -50,7 +50,8 @@ def upsert_task(state: Any, *, dir_name: str = "") -> bool:
             "prompt": data.get("prompt") or data.get("idea") or "",
             "input_payload": data,
             "config": {"dir_name": dir_name, "video_width": data.get("video_width"),
-                       "video_height": data.get("video_height")},
+                       "video_height": data.get("video_height"),
+                       "input_files": sync_input_files(state)},
             "progress": max(0, min(100, int(progress * 100) if progress <= 1 else int(progress))),
             "error_message": data.get("current_message") if str(status) == "failed" else None,
             "error_details": {"traceback": data.get("error_traceback", "")} if data.get("error_traceback") else None,
@@ -134,3 +135,74 @@ def get_final_video_url(task_id: str) -> str | None:
     except Exception:
         logger.warning("[Supabase] Artifact URL lookup failed for %s", task_id, exc_info=True)
         return None
+
+
+_FILE_FIELDS = (
+    "reference_image", "end_frame_image", "end_frame_images",
+    "scene_reference_images", "reference_images", "anchor_reference_image",
+)
+
+def _iter_state_files(state: Any):
+    for field in _FILE_FIELDS:
+        value = getattr(state, field, None)
+        if isinstance(value, str) and value:
+            yield field, value
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, str) and item:
+                    yield field, item
+        elif isinstance(value, dict):
+            for key, items in value.items():
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, str) and item:
+                            yield f"{field}.{key}", item
+
+def sync_input_files(state: Any) -> dict[str, str]:
+    """Upload local input files so a later worker can restore them."""
+    cfg = _config()
+    if not cfg:
+        return {}
+    url, key = cfg
+    manifest: dict[str, str] = {}
+    for field, path in _iter_state_files(state):
+        if not os.path.isfile(path):
+            continue
+        name = os.path.basename(path)
+        object_path = f"{state.task_id}/inputs/{uuid.uuid4().hex}_{name}"
+        try:
+            with open(path, "rb") as fh:
+                response = requests.post(
+                    f"{url}/storage/v1/object/agnes-artifacts/{object_path}",
+                    headers={"apikey": key, "Authorization": f"Bearer {key}",
+                             "Content-Type": "application/octet-stream", "x-upsert": "true"},
+                    data=fh, timeout=60,
+                )
+            response.raise_for_status()
+            manifest[f"{field}|{path}"] = object_path
+        except Exception:
+            logger.warning("[Supabase] Input upload failed for %s (%s)", state.task_id, path, exc_info=True)
+    return manifest
+
+def download_input_files(task_id: str, manifest: dict[str, str]) -> None:
+    """Restore durable input files into their original local paths."""
+    cfg = _config()
+    if not cfg:
+        return
+    url, key = cfg
+    for source, object_path in (manifest or {}).items():
+        if "|" not in source:
+            continue
+        _, local_path = source.split("|", 1)
+        try:
+            os.makedirs(os.path.dirname(local_path) or ".", exist_ok=True)
+            response = requests.get(
+                f"{url}/storage/v1/object/agnes-artifacts/{object_path}",
+                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+                timeout=60,
+            )
+            response.raise_for_status()
+            with open(local_path, "wb") as fh:
+                fh.write(response.content)
+        except Exception:
+            logger.warning("[Supabase] Input restore failed for %s -> %s", task_id, local_path, exc_info=True)

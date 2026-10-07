@@ -2,6 +2,7 @@ import pytest
 from fastapi import HTTPException
 
 import core.video_validation as vv
+from core.api.agnes_models import get_fallback_models
 
 
 def _catalog(model="agnes-video-2.5-flash"):
@@ -81,7 +82,7 @@ def test_production_rejects_unsynced_catalog(monkeypatch):
         vv,
         "fetch_model_catalog",
         lambda api_key: {
-            "models": vv.get_fallback_models(),
+            "models": get_fallback_models(),
             "model_details": {},
             "source": "fallback",
             "synced": False,

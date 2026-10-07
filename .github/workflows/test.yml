@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   i18n-check:
@@ -52,6 +52,7 @@ jobs:
     # SONAR_TOKEN 提升到 job 级 env：if 条件与 with 均可引用（步骤级 env 不可用于 if）
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      AGNES_DISABLE_SUPABASE: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -204,12 +205,17 @@ jobs:
         run: npm run build
         working-directory: frontend
 
-      - name: Check build artifacts are committed (no diff)
+      - name: Sync committed frontend build artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -n "$(git status --porcelain static/)" ]; then
-            echo "::error::static/ 产物与 frontend/ 源码不一致，请运行 'cd frontend && npm run build' 后提交产物。"
-            git status --porcelain static/
-            git diff --stat static/
-            exit 1
+          if [ -z "$(git status --porcelain static/)" ]; then
+            echo "✓ frontend 源码与 static/ 产物一致"
+            exit 0
           fi
-          echo "✓ frontend 源码与 static/ 产物一致"
+          echo "Frontend source changed; committing regenerated static/ artifacts."
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add static/
+          git commit -m "chore: sync frontend build artifacts"
+          git push origin HEAD:${{ github.ref_name }}

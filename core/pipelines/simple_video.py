@@ -164,7 +164,7 @@ class SimpleVideoPipeline(BasePipeline):
         first_frame = self._state.reference_image if generation_mode == "keyframe" else None
         last_frame = self._state.end_frame_image if generation_mode == "keyframe" else None
 
-        await self._emit("video_gen", "running", self._t("progress.simple.submitting", mode=self._state.mode), _PROGRESS_SUBMIT)
+        await self._emit("planning", "running", "Preparando prompt con OpenRouter...", 0.05)
 
         # Deterministic prompt architecture. Keep the user original prompt
         # untouched while storing the processed prompt used by the provider.
@@ -182,6 +182,7 @@ class SimpleVideoPipeline(BasePipeline):
                 }
                 if plan.aspect_ratio in ratio_sizes:
                     self._state.video_width, self._state.video_height = ratio_sizes[plan.aspect_ratio]
+                self.video_api.model = plan.model
                 self._state.generation_metadata = {
                     "planner": "openrouter",
                     "planner_model": plan.model,
@@ -206,7 +207,9 @@ class SimpleVideoPipeline(BasePipeline):
             processed_prompt = spec.render()
         self._state.prompt_original = self._state.prompt
         self._state.prompt_processed = processed_prompt
+        planner_metadata = self._state.generation_metadata.copy()
         self._state.generation_metadata = {
+            **planner_metadata,
             "original_prompt": self._state.prompt,
             "processed_prompt": processed_prompt,
             "model": self.video_api.model,
@@ -221,6 +224,7 @@ class SimpleVideoPipeline(BasePipeline):
                 "seed": self._state.seed,
             },
         }
+        await self._emit("planning", "completed", "Prompt listo. Enviando a Agnes...", _PROGRESS_SUBMIT)
         self.task_manager.update_state(
             prompt_original=self._state.prompt,
             prompt_processed=processed_prompt,

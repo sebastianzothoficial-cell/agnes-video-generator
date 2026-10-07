@@ -197,6 +197,23 @@ def _extract_from_http_error(exc: Exception) -> tuple[Optional[int], str, str]:
     return None, "", str(exc)
 
 
+def _sanitize_provider_text(value: str) -> str:
+    """Remove common credential/token forms before persisting upstream responses."""
+    if not value:
+        return ""
+    text = str(value)
+    import re
+    patterns = (
+        (r"(?i)(authorization\\s*[:=]\\s*bearer\\s+)[^\\s,\\"}]+", r"\\1[REDACTED]"),
+        (r"(?i)(bearer\\s+)[^\\s,\\"}]+", r"\\1[REDACTED]"),
+        (r"(?i)(sk-[a-z0-9_-]{8,})", "[REDACTED_API_KEY]"),
+        (r"(?i)((?:api[_-]?key|access[_-]?token|token)\\s*[:=]\\s*[\\"']?)[^\\s,\\"'}]+", r"\\1[REDACTED]"),
+    )
+    for pattern, replacement in patterns:
+        text = re.sub(pattern, replacement, text)
+    return text[:5000]
+
+
 def collect_error(
     model_type: str,
     api_method: str,
@@ -244,9 +261,9 @@ def collect_error(
             "prompt": prompt[:5000] if prompt else "",
             "system_prompt": system_prompt[:2000] if system_prompt else "",
             "error_type": error_type,
-            "error_message": error_message[:3000] if error_message else "",
+            "error_message": _sanitize_provider_text(error_message)[:3000] if error_message else "",
             "status_code": status_code,
-            "response_body": response_body[:5000] if response_body else "",
+            "response_body": _sanitize_provider_text(response_body) if response_body else "",
             "retry_count": retry_count,
         }
         if extra:

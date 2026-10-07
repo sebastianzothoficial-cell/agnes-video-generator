@@ -44,7 +44,7 @@ async def process_agnes_task(message: dict) -> None:
                 current_message="No se pudieron restaurar todos los archivos de entrada.",
             )
             return
-        if not supabase_store.download_input_files(task_id, input_files):
+        if not supabase_store.download_input_files(task_id, input_files, state=state):
             raise RuntimeError(f"Unable to restore durable input files for task {task_id}")
         api_key = get_api_key()
         if not api_key:

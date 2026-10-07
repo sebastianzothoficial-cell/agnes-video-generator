@@ -46,6 +46,8 @@ def _validate_plan(data: dict) -> VideoPlan:
     if not 4 <= plan.duration <= 12: raise OpenRouterPlanningError('OpenRouter returned unsupported duration')
     if plan.aspect_ratio not in {'21:9','16:9','4:3','1:1','3:4','9:16'}: raise OpenRouterPlanningError('OpenRouter returned unsupported aspect ratio')
     if plan.mode not in {'text','keyframe','reference'}: raise OpenRouterPlanningError('OpenRouter returned unsupported Agnes mode')
+    if plan.model not in {'agnes-video-2.5-flash','agnes-video-2.5'}:
+        raise OpenRouterPlanningError('OpenRouter returned an unsupported Agnes video model')
     if plan.model.startswith('agnes-video-2.5-flash'): plan.size = '720P'
     return plan
 

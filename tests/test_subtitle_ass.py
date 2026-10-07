@@ -9,6 +9,7 @@ from core.compositor.concatenator.audio_overlay import (
     _subtitle_ass_enabled,
 )
 from core.compositor.concatenator.concat import VideoConcatenator
+from core.compositor.ffmpeg_tool import resolve_binary
 from core.config import subtitle_ass_enabled as config_subtitle_ass_enabled
 from models.task import SubtitleStyle
 
@@ -152,8 +153,11 @@ def test_ass_disabled_falls_back_to_moviepy(tmp_path, monkeypatch):
 
     srt = _write_srt(tmp_path)
     audio = str(tmp_path / "audio.mp3")
+    ffmpeg = resolve_binary("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("ffmpeg executable unavailable")
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+        [ffmpeg, "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
          "-t", "3", "-c:a", "libmp3lame", "-q:a", "4", audio],
         capture_output=True,
     )

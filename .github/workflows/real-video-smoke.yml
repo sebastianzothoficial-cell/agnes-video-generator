@@ -19,9 +19,16 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install -r requirements.txt
       - name: Generate first real video
         run: python scripts/real_video_smoke_test.py
+      - name: Verify generated MP4
+        run: |
+          test -s real-video-smoke.mp4
+          ffprobe -v error -select_streams v:0             -show_entries stream=codec_name,width,height,duration             -of json real-video-smoke.mp4
       - name: Upload generated video
         if: success()
         uses: actions/upload-artifact@v4

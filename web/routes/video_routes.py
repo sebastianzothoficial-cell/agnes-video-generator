@@ -11,7 +11,7 @@ import shutil
 import tempfile
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from core.api.agnes_image import AgnesImageAPI
 from core.api.chat_providers import get_or_build_text_chat_client
@@ -29,6 +29,7 @@ from core.dependency_graph import get_dependency_graph
 from core.i18n_backend import translate
 from core.path_security import UnsafePathError, safe_join
 from core.task_manager import TaskManager
+from core import supabase_store
 from models.task import StepStatus
 from utils.network import describe_network_error
 from web import app_state, helpers
@@ -58,6 +59,9 @@ async def serve_video(task_id: str):
         raise HTTPException(status_code=404, detail="Video not found")
     video_path = os.path.join(task_dir, "final_video.mp4")
     if not os.path.exists(video_path):
+        durable_url = supabase_store.get_final_video_url(task_id)
+        if durable_url:
+            return RedirectResponse(durable_url, status_code=307)
         raise HTTPException(status_code=404, detail="Video not found")
     return FileResponse(video_path, media_type="video/mp4")
 

@@ -118,7 +118,8 @@ async def process_agnes_task(message: dict) -> None:
         if budget_expired:
             latest = supabase_store.get_task(task_id) or {}
             latest_status = str(latest.get("status") or "").lower()
-            if latest_status not in {"completed", "failed"}:
+            latest_current_status = str(latest.get("current_status") or "").lower()
+            if latest_status not in {"completed", "failed"} and latest_current_status != "awaiting_user":
                 tm.update_state(
                     status=StepStatus.QUEUED,
                     current_status="running",
@@ -133,6 +134,7 @@ async def process_agnes_task(message: dict) -> None:
                     retention=timedelta(days=1),
                     delay=timedelta(seconds=WORKER_CONTINUATION_DELAY_SECONDS),
                 )
+                supabase_store.release_task_claim(task_id)
                 logger.info(
                     "[Queue] Task %s checkpointed and continuation enqueued",
                     task_id,
@@ -142,6 +144,7 @@ async def process_agnes_task(message: dict) -> None:
                 # message while the explicit continuation is pending.
                 return
 
+        supabase_store.release_task_claim(task_id)
         logger.info("[Queue] Finished durable Agnes task %s", task_id)
     except Exception:
         # Queue is at-least-once. If the function itself fails after claiming,

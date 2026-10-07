@@ -194,11 +194,21 @@ async function loadModels() {
   try {
     const cd = await api.getConfig()
     const sel = cd.models || {}
+    const textProvider = sel.text_provider || ''
+    const catalog = appState.modelListCache
+    const chooseCatalogModel = (kind: 'text' | 'image' | 'video', selected: string) => {
+      const available = Array.isArray(catalog[kind]) ? catalog[kind] : []
+      return selected && available.includes(selected) ? selected : (available[0] || '')
+    }
     appState.models = {
-      text: sel.text || appState.modelListCache.text?.[0] || '',
-      image: sel.image || appState.modelListCache.image?.[0] || '',
-      video: sel.video || appState.modelListCache.video?.[0] || '',
-      text_provider: sel.text_provider || '',
+      // Custom text providers are outside the Agnes catalog; Agnes text stays
+      // provider-verified when the selected provider is Agnes.
+      text: textProvider && textProvider !== 'agnes'
+        ? (sel.text || '')
+        : chooseCatalogModel('text', sel.text || ''),
+      image: chooseCatalogModel('image', sel.image || ''),
+      video: chooseCatalogModel('video', sel.video || ''),
+      text_provider: textProvider,
     }
     if (sel.text_provider) appState.textProviderSelected = sel.text_provider
   } catch (e) {

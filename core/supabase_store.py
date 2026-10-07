@@ -108,6 +108,21 @@ def claim_task(task_id: str) -> bool:
     except Exception:
         logger.warning("[Supabase] Task claim failed for %s", task_id, exc_info=True)
         return False
+def release_task_claim(task_id: str) -> bool:
+    """Return an unexpectedly failed claimed task to queued for Queue redelivery."""
+    if not enabled():
+        return True
+    try:
+        rows = _request(
+            "PATCH",
+            f"{TABLE}?task_key=eq.{task_id}&status=eq.running",
+            payload={"status": "queued", "worker_claimed_at": None},
+            prefer="return=representation",
+        ) or []
+        return bool(rows)
+    except Exception:
+        logger.warning("[Supabase] Task claim release failed for %s", task_id, exc_info=True)
+        return False
 def get_task(task_id: str) -> dict | None:
     if not enabled(): return None
     try:

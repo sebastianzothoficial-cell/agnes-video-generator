@@ -21,6 +21,9 @@ async def process_agnes_task(message: dict) -> None:
     config = durable.get("config") or {}
     dir_name = str(config.get("dir_name") or task_id)
     tm = TaskManager(task_id, dir_name=dir_name)
+    state = tm.load()
+    if state is None:
+        raise RuntimeError(f"Unable to hydrate task {task_id} from Supabase")
     input_files = config.get("input_files") or {}
     if not supabase_store.input_manifest_complete(state, input_files):
         tm.update_state(
@@ -30,9 +33,6 @@ async def process_agnes_task(message: dict) -> None:
         )
         raise RuntimeError(f"Incomplete input manifest for task {task_id}")
     supabase_store.download_input_files(task_id, input_files)
-    state = tm.load()
-    if state is None:
-        raise RuntimeError(f"Unable to hydrate task {task_id} from Supabase")
     if state.status in (StepStatus.COMPLETED, StepStatus.FAILED):
         logger.info("[Queue] Task %s already terminal; acknowledging duplicate", task_id)
         return

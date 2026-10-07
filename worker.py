@@ -36,24 +36,30 @@ async def process_agnes_task(message: dict) -> None:
         raise RuntimeError(f"Unable to claim durable task {task_id}")
     state.status = StepStatus.RUNNING
     input_files = config.get("input_files") or {}
-    if not supabase_store.input_manifest_complete(state, input_files):
-        tm.update_state(
-            status=StepStatus.FAILED,
-            current_status="failed",
-            current_message="No se pudieron restaurar todos los archivos de entrada.",
-        )
-        raise RuntimeError(f"Incomplete input manifest for task {task_id}")
-    supabase_store.download_input_files(task_id, input_files)
-    api_key = get_api_key()
-    if not api_key:
-        tm.update_state(status=StepStatus.FAILED, current_status="failed",
-                        current_message="AGNES API key is not configured")
-        return
-    pipeline = deps.create_pipeline_for_type(state.task_type, api_key, task_id, dir_name)
-    app_state.active_pipelines[task_id] = pipeline
-    logger.info("[Queue] Starting durable Agnes task %s", task_id)
-    await deps.run_pipeline_with_concurrency(pipeline, state, tm)
-    logger.info("[Queue] Finished durable Agnes task %s", task_id)
+    try:
+        if not supabase_store.input_manifest_complete(state, input_files):
+            tm.update_state(
+                status=StepStatus.FAILED,
+                current_status="failed",
+                current_message="No se pudieron restaurar todos los archivos de entrada.",
+            )
+            return
+        supabase_store.download_input_files(task_id, input_files)
+        api_key = get_api_key()
+        if not api_key:
+            tm.update_state(status=StepStatus.FAILED, current_status="failed",
+                            current_message="AGNES API key is not configured")
+            return
+        pipeline = deps.create_pipeline_for_type(state.task_type, api_key, task_id, dir_name)
+        app_state.active_pipelines[task_id] = pipeline
+        logger.info("[Queue] Starting durable Agnes task %s", task_id)
+        await deps.run_pipeline_with_concurrency(pipeline, state, tm)
+        logger.info("[Queue] Finished durable Agnes task %s", task_id)
+    except Exception:
+        # Queue is at-least-once. If the function itself fails after claiming,
+        # release the durable claim so the redelivery can execute the task.
+        supabase_store.release_task_claim(task_id)
+        raise
 
 @subscribe(topic=AGNES_QUEUE_TOPIC, consumer_group="agnes-video-worker",
             retry_after=900, max_concurrency=1, max_attempts=5)

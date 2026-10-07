@@ -11,7 +11,7 @@ from typing import List, Optional
 import srt as srt_lib
 from moviepy import VideoFileClip, concatenate_videoclips
 
-from core.compositor.ffmpeg_tool import probe_duration, resolve_binary
+from core.compositor.ffmpeg_tool import probe_duration, probe_video_signature, resolve_binary
 from models.task import SubtitleStyle
 
 logger = logging.getLogger(__name__)
@@ -111,18 +111,14 @@ class ConcatMixin:
             True=已成功产出；False=不适用或失败（需回退）。
         """
         try:
-            # 探针：所有片段 width,height,avg_frame_rate 必须一致
+            # 探针：所有片段 width,height,avg_frame_rate 必须一致。
+            # probe_video_signature 会在 ffprobe 不可用时回退到 ffmpeg -i。
             sigs = set()
             for p in video_paths:
-                r = subprocess.run(
-                    [resolve_binary("ffprobe"), "-v", "error", "-select_streams", "v:0",
-                     "-show_entries", "stream=width,height,avg_frame_rate",
-                     "-of", "csv=s=x:p=0", p],
-                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15,
-                )
-                if r.returncode != 0 or not r.stdout.strip():
+                signature = probe_video_signature(p)
+                if signature is None:
                     return False
-                sigs.add(r.stdout.strip())
+                sigs.add(signature)
             if len(sigs) != 1:
                 logger.info(
                     f"[Compositor] ffmpeg copy concat skipped: 片段分辨率/帧率不一致 "

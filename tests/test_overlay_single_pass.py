@@ -16,8 +16,11 @@ _HAS_ASSET = os.path.exists(ASSET)
 
 def _make_audio(tmp_path, seconds=3):
     ap = str(tmp_path / "audio.mp3")
+    ffmpeg = resolve_binary("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("ffmpeg executable unavailable")
     subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+        [ffmpeg, "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
          "-t", str(seconds), "-c:a", "libmp3lame", "-q:a", "4", ap],
         capture_output=True,
     )

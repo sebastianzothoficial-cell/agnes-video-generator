@@ -290,6 +290,15 @@ async def resume_task(task_id: str):
                 raise HTTPException(status_code=400, detail="Task is already queued or running")
             try:
                 from vercel.queue import send
+                # A resumed Vercel task must be put back into a claimable
+                # durable state before Queue delivery. claim_task() intentionally
+                # accepts only pending/queued tasks.
+                tm.update_state(
+                    status=StepStatus.QUEUED,
+                    current_status="running",
+                    current_message=translate("task.queued", getattr(state, "ui_language", "") or "zh"),
+                    current_progress=0.0,
+                )
                 await send(
                     "agnes-video-tasks",
                     {"task_id": task_id},
@@ -322,9 +331,9 @@ async def stop_task(task_id: str):
         if state.status in (StepStatus.COMPLETED, StepStatus.FAILED):
             raise HTTPException(status_code=400, detail="Task is not running")
         tm.update_state(
-            status=StepStatus.FAILED,
+            status=StepStatus.PENDING,
             current_status="cancelled",
-            current_message="Task cancelled by user before execution.",
+            current_message="Task cancelled by user; ready to resume.",
         )
         return {"ok": True, "task_id": task_id, "cancelled": True}
 

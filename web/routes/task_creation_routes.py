@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -44,6 +44,34 @@ from web.log_safe import safe_log
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["task-creation"])
+
+async def _dispatch_pipeline(pipeline, state, task_manager) -> str:
+    """Dispatch durable pipeline execution on Vercel; keep local dev unchanged."""
+    if os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+        try:
+            from vercel.queue import send
+            message_id = await send(
+                "agnes-video-tasks",
+                {"task_id": state.task_id},
+                idempotency_key=f"agnes-task:{state.task_id}",
+                retention=timedelta(days=1),
+            )
+            logger.info("[Queue] Task %s enqueued: %s", state.task_id, message_id)
+            return str(message_id or "")
+        except Exception as exc:
+            logger.error("[Queue] Failed to enqueue task %s: %s", state.task_id, exc, exc_info=True)
+            task_manager.update_state(
+                status="failed",
+                current_status="failed",
+                current_message="No se pudo encolar el pipeline para ejecución en Vercel.",
+            )
+            raise HTTPException(status_code=503, detail="Pipeline queue unavailable") from exc
+
+    app_state.launch_background_task(
+        deps.run_pipeline_with_concurrency(pipeline, state, task_manager)
+    )
+    return "local"
+
 
 # 上传文件允许的扩展名白名单（拒绝任意后缀，杜绝路径穿越）
 _ALLOWED_UPLOAD_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".mp4", ".mov", ".webm"}
@@ -246,7 +274,7 @@ async def create_simple_task(
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
     deps.mark_task_queued(tm, lang=state.ui_language)
-    app_state.launch_background_task(deps.run_pipeline_with_concurrency(pipeline, state, tm))
+    await _dispatch_pipeline(pipeline, state, tm)
     logger.info(f"[Simple] Task created: {task_id}, mode={mode}, duration={duration}s (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
 
@@ -397,7 +425,7 @@ async def create_creative_task(
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
     deps.mark_task_queued(tm, lang=state.ui_language)
-    app_state.launch_background_task(deps.run_pipeline_with_concurrency(pipeline, state, tm))
+    await _dispatch_pipeline(pipeline, state, tm)
     logger.info("[Creative] Task created: %s, idea=%s... (queued)",
                 safe_log(task_id), safe_log(idea[:40]))
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
@@ -529,7 +557,7 @@ async def create_manuscript_task(
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
     deps.mark_task_queued(tm, lang=state.ui_language)
-    app_state.launch_background_task(deps.run_pipeline_with_concurrency(pipeline, state, tm))
+    await _dispatch_pipeline(pipeline, state, tm)
     logger.info(f"[Manuscript] Task created: {task_id}, text_len={len(manuscript_text)} (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
 
@@ -651,7 +679,7 @@ async def create_poetry_task(
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
     deps.mark_task_queued(tm, lang=state.ui_language)
-    app_state.launch_background_task(deps.run_pipeline_with_concurrency(pipeline, state, tm))
+    await _dispatch_pipeline(pipeline, state, tm)
     logger.info("[Poetry] Task created: %s, poem=%r (queued)",
                 safe_log(task_id), safe_log(poem_text[:20]))
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
@@ -742,7 +770,7 @@ async def create_anchor_task(
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
     deps.mark_task_queued(tm, lang=state.ui_language)
-    app_state.launch_background_task(deps.run_pipeline_with_concurrency(pipeline, state, tm))
+    await _dispatch_pipeline(pipeline, state, tm)
     logger.info(f"[Anchor] Task created: {task_id}, script_len={len(script_text)} (queued)")
     return {"ok": True, "task_id": task_id, "dir_name": dir_name}
 

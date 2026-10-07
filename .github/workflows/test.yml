@@ -85,7 +85,7 @@ jobs:
         run: |
           ruff check core/ web/ utils/ models/ scripts/ --fix --output-format=github
           ruff check core/ web/ utils/ models/ scripts/ --output-format=github
-          if [ -n "$(git status --porcelain core/ web/ utils/ models/ scripts/)" ]; then
+          if [ "${{ matrix.python-version }}" = "3.12" ] && [ -n "$(git status --porcelain core/ web/ utils/ models/ scripts/)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add core/ web/ utils/ models/ scripts/

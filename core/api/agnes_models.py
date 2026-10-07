@@ -29,7 +29,6 @@ _FALLBACK = {
     "video": [DEFAULT_VIDEO_MODEL],
 }
 
-_DEPRECATED_MODELS = {"agnes-2.0-flash"}
 
 
 def _classify(model: dict[str, Any]) -> str | None:
@@ -41,7 +40,7 @@ def _classify(model: dict[str, Any]) -> str | None:
     be selected for a capability-sensitive task.
     """
     model_id = str(model.get("id") or "").strip()
-    if not model_id or model_id in _DEPRECATED_MODELS:
+    if not model_id:
         return None
 
     raw_type = str(

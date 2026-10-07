@@ -175,4 +175,4 @@ More projects by the same author:
 **Keywords**: free AI video generator, AI video generation tool, text to video AI, free AI video maker, AI video creator, open source video generator, Agnes AI, text-to-video, image-to-video, keyframes video, AI narration, auto subtitles, multi-scene video, zero cost AI video, no subscription AI video tool, digital anchor, self-hosted AI video generator, open source alternative to Runway
 
 
-<!-- real-smoke-trigger -->
+<!-- real-smoke-trigger-v2 -->

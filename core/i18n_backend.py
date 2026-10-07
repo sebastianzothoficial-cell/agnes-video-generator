@@ -280,6 +280,10 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "zh": "任务排队中...",
         "en": "Task queued...",
     },
+    "task.running": {
+        "zh": "任务运行中...",
+        "en": "Task running...",
+    },
     "task.interrupted_resumable": {
         "zh": "任务已被中断，可从任务列表续传",
         "en": "Task interrupted. You can resume it from the task list.",

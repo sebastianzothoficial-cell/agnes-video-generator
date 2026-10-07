@@ -1,5 +1,7 @@
 """Durable Vercel Queue worker for Agnes video pipelines."""
 from __future__ import annotations
+import asyncio
+import contextlib
 import logging
 from core import supabase_store
 from core.config import get_api_key
@@ -54,13 +56,30 @@ async def process_agnes_task(message: dict) -> None:
         pipeline = deps.create_pipeline_for_type(state.task_type, api_key, task_id, dir_name)
         app_state.active_pipelines[task_id] = pipeline
         logger.info("[Queue] Starting durable Agnes task %s", task_id)
-        await deps.run_pipeline_with_concurrency(pipeline, state, tm, already_claimed=True)
+        stop_watcher = asyncio.create_task(_watch_durable_stop(task_id, pipeline))
+        try:
+            await deps.run_pipeline_with_concurrency(pipeline, state, tm, already_claimed=True)
+        finally:
+            stop_watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await stop_watcher
         logger.info("[Queue] Finished durable Agnes task %s", task_id)
     except Exception:
         # Queue is at-least-once. If the function itself fails after claiming,
         # release the durable claim so the redelivery can execute the task.
         supabase_store.release_task_claim(task_id)
         raise
+
+async def _watch_durable_stop(task_id: str, pipeline) -> None:
+    """Stop a running Vercel pipeline when the durable task is cancelled."""
+    while True:
+        await asyncio.sleep(2)
+        durable = supabase_store.get_task(task_id)
+        if durable and str(durable.get("status") or "").lower() == "pending":
+            logger.info("[Queue] Durable stop requested for task %s", task_id)
+            pipeline.stop()
+            return
+
 
 @subscribe(topic=AGNES_QUEUE_TOPIC, consumer_group="agnes-video-worker",
             retry_after=900, max_concurrency=1, max_attempts=5)

@@ -44,6 +44,11 @@ def _classify(model_id: str) -> str:
     return "text"
 
 
+def get_fallback_models() -> dict:
+    """Return the built-in model catalog without contacting the provider."""
+    return {key: list(models) for key, models in _FALLBACK.items()}
+
+
 def fetch_available_models(api_key: str) -> dict:
     """拉取并按类型分组 Agnes 可用模型。
 
@@ -54,6 +59,8 @@ def fetch_available_models(api_key: str) -> dict:
         {"text": [model_id, ...], "image": [...], "video": [...]}
         接口失败（网络/鉴权/非 200）时返回硬编码兜底列表。
     """
+    if not api_key:
+        return get_fallback_models()
     try:
         endpoint = f"{get_base_url_for_key(api_key)}/models?all=true"
         resp = requests.get(

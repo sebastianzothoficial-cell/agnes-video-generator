@@ -1036,17 +1036,17 @@ class AgnesVideoAPI:
         else:
             if first_frame_path or last_frame_path:
                 raise ValueError("Agnes reference mode does not accept first_frame/last_frame")
+            max_images = 5 if self.model == "agnes-video-2.5-flash" else 8
+            if len(reference_image_paths) > max_images:
+                raise ValueError(
+                    f"{self.model} accepts at most {max_images} image reference(s)"
+                )
             resolved_refs = []
-            for p in reference_image_paths[:8]:
+            for p in reference_image_paths:
                 norm = await asyncio.to_thread(normalize_reference_path, p, width, height)
                 resolved_refs.append(await self._resolve_image_ref(norm))
             if not resolved_refs:
                 raise ValueError("Agnes reference mode requires at least one image reference")
-            max_images = 5 if self.model == "agnes-video-2.5-flash" else 8
-            if len(resolved_refs) > max_images:
-                raise ValueError(
-                    f"{self.model} accepts at most {max_images} image reference(s)"
-                )
             payload["images"] = resolved_refs
 
         logger.info(

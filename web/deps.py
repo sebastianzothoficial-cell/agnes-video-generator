@@ -154,6 +154,8 @@ async def run_pipeline_with_concurrency(
     pipeline: BasePipeline,
     state: BaseTaskState,
     task_manager: TaskManager,
+    *,
+    already_claimed: bool = False,
 ):
     """带并发控制的 Pipeline 执行包装器。
 
@@ -175,14 +177,23 @@ async def run_pipeline_with_concurrency(
         f"current={semaphore.current}/{semaphore.max_weight})"
     )
 
-    # 标记排队状态
-    task_manager.update_state(status=StepStatus.QUEUED)
-
-    # 排队时持久化进度消息（前端轮询可读取）
-    task_manager.update_state(
-        current_step="init", current_status="running",
-        current_message=translate("task.queued", ui_lang), current_progress=0.0,
-    )
+    # HTTP/local execution starts in QUEUED. A Vercel Queue worker has already
+    # atomically claimed the durable row as RUNNING; never write it back to
+    # QUEUED or another worker could claim the same task while this worker runs.
+    if not already_claimed:
+        task_manager.update_state(status=StepStatus.QUEUED)
+        task_manager.update_state(
+            current_step="init", current_status="running",
+            current_message=translate("task.queued", ui_lang), current_progress=0.0,
+        )
+    else:
+        task_manager.update_state(
+            status=StepStatus.RUNNING,
+            current_step="init",
+            current_status="running",
+            current_message=translate("task.running", ui_lang),
+            current_progress=0.0,
+        )
 
     # 优化路线图 0.4：权重超过并发上限时直接落盘 FAILED 并给出可读原因。
     # 此前该场景由 semaphore.acquire 抛 ValueError，异常被后台任务静默吞掉，

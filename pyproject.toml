@@ -1,8 +1,30 @@
 [project]
 name = "agnes-video-generator"
 version = "1.0.0"
-requires-python = ">=3.11"
-dependencies = []
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "fastapi>=0.100.0,<1.0.0",
+  "uvicorn>=0.23.0,<1.0.0",
+  "websockets>=12.0,<14.0",
+  "requests>=2.28.0,<3.0.0",
+  "pydantic>=2.0.0,<3.0.0",
+  "pydantic-settings>=2.0.0,<3.0.0",
+  "PyYAML>=6.0,<7.0",
+  "moviepy>=2.0.0,<3.0.0",
+  "tenacity>=8.0.0,<10.0.0",
+  "python-multipart>=0.0.6,<1.0.0",
+  "anyio>=4.0.0,<5.0.0",
+  "edge-tts>=6.1.0,<8.0.0",
+  "srt>=3.5.0,<4.0.0",
+  "arabic-reshaper>=3.0.0,<4.0.0",
+  "python-bidi>=0.4.2,<1.0.0",
+  "mishkal>=0.4.1,<0.5.0",
+  "json-repair>=0.25.0,<1.0.0",
+  "python-dotenv>=1.0.0,<2.0.0",
+  "Pillow>=9.0.0",
+  "imageio-ffmpeg>=0.2.0,<1.0.0",
+  "vercel-queue>=0.9.0,<1.0.0"
+]
 
 [[tool.vercel.subscribers]]
 entrypoint = "worker:handle_agnes_task"

@@ -143,12 +143,19 @@ class ManuscriptParagraph(BaseModel):
 
 
 class SceneTask(BaseModel):
-    """场景任务（类型 2 专用，v2.0 新增旁白/音频/字幕字段）"""
+    """Scene metadata is durable so generation remains reproducible/debuggable."""
 
     index: int
     status: StepStatus = StepStatus.PENDING
-    # v4.0 重构：场景视频 prompt（链式/循环模式下用作 i2v/t2v 主提示词）
+    # Original/processed prompts and provider contract for deterministic replay.
     scene_prompt: str = ""
+    prompt_original: str = ""
+    prompt_processed: str = ""
+    model_used: str = ""
+    capability: str = ""
+    generation_mode: str = ""
+    references: List[str] = Field(default_factory=list)
+    parameters: dict = Field(default_factory=dict)
     end_frame_prompt: str = ""
     end_frame_file: str = ""
     video_id: str = ""

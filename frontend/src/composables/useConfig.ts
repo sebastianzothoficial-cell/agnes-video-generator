@@ -188,10 +188,19 @@ async function loadModels() {
     const cd = await api.getConfig()
     const sel = cd.models || {}
     appState.models = {
-      text: sel.text || '',
-      image: sel.image || '',
-      video: sel.video || '',
+      text: sel.text || appState.modelListCache.text?.[0] || '',
+      image: sel.image || appState.modelListCache.image?.[0] || '',
+      video: sel.video || appState.modelListCache.video?.[0] || '',
       text_provider: sel.text_provider || '',
+    }
+    // Keep the selected defaults visible even when /api/models is temporarily
+    // unavailable: the backend always exposes its built-in fallback catalog.
+    // This prevents a valid selected model from rendering as an empty <select>.
+    for (const kind of ['text', 'image', 'video'] as const) {
+      const selected = appState.models[kind]
+      if (selected && !appState.modelListCache[kind].includes(selected)) {
+        appState.modelListCache[kind] = [selected, ...appState.modelListCache[kind]]
+      }
     }
     if (sel.text_provider) appState.textProviderSelected = sel.text_provider
   } catch (e) {

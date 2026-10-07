@@ -290,12 +290,24 @@ class AgnesVideoAPI:
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self.shutdown_event = None
+        self.cancel_event = None
         # 基础 headers（不含 Authorization）：每次请求前经 _auth_headers() 注入当前 Key
         self._base_headers = {
             "Content-Type": "application/json",
         }
         # 向后兼容：旧调用方可能读取 self.headers
         self.headers = dict(self._base_headers)
+
+    def _is_cancelled(self) -> bool:
+        """Return True when global shutdown or this pipeline requested cancellation."""
+        return bool(
+            (self.cancel_event and self.cancel_event.is_set())
+            or (self.shutdown_event and self.shutdown_event.is_set())
+        )
+
+    def _cancel_event_for_wait(self):
+        """Event passed to interrupt rate-limit waits when a pipeline is stopped."""
+        return self.cancel_event or self.shutdown_event
 
     def _auth_headers(self, key: str | None = None) -> dict:
         """每次请求前生成带当前 Key 的 headers 副本。
@@ -362,7 +374,7 @@ class AgnesVideoAPI:
         ring = get_key_ring()
         max_rotations = len(ring) * retries
         while attempt < retries:
-            if self.shutdown_event and self.shutdown_event.is_set():
+            if self._is_cancelled():
                 logger.info("[AgnesVideo] Image upload cancelled by shutdown")
                 return None
             try:
@@ -378,7 +390,7 @@ class AgnesVideoAPI:
                     },
                 }
                 logger.info(f"[AgnesVideo] Uploading image to hosted URL (attempt {attempt + 1}/{retries})...")
-                await get_rate_limiter().acquire_async(self.shutdown_event)
+                await get_rate_limiter().acquire_async(self._cancel_event_for_wait())
                 key = ring.next()
                 resp = await asyncio.to_thread(
                     requests.post,

@@ -13,7 +13,20 @@ from models.task import AudioConfig, SubtitleConfig, SubtitleStyle
 
 logger = logging.getLogger(__name__)
 
-CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".agnes_config")
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Vercel functions run with a read-only deployment filesystem. Configuration
+# written by the web UI must therefore never target the repository checkout.
+# An explicit AGNES_CONFIG_DIR wins; otherwise use ephemeral /tmp on Vercel and
+# keep the historical project-local location for normal/local deployments.
+_DEFAULT_CONFIG_DIR = os.path.join(_PROJECT_ROOT, ".agnes_config")
+if os.getenv("AGNES_CONFIG_DIR"):
+    CONFIG_DIR = os.path.abspath(os.path.expanduser(os.environ["AGNES_CONFIG_DIR"]))
+elif os.getenv("VERCEL") or os.getenv("VERCEL_ENV"):
+    CONFIG_DIR = os.path.join(tempfile.gettempdir(), "agnes-video-generator", ".agnes_config")
+else:
+    CONFIG_DIR = _DEFAULT_CONFIG_DIR
+
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
 # ═══════════════════════════════════════════════════
@@ -52,7 +65,6 @@ def api_key_missing_detail(lang: str | None = None) -> str:
     return api_key_missing_msg(lang)
 
 # 项目根目录
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def font_dir() -> str:

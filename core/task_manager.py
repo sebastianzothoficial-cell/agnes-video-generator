@@ -147,6 +147,7 @@ class TaskManager:
                     # 诊断端点 / 前端展示补偿，原始 JSON 不追求人工可读
                     json.dump(self._state.model_dump(), f, ensure_ascii=False)
                 os.replace(tmp_path, self._task_file)
+                supabase_store.upsert_task(self._state, dir_name=self.dir_name)
             except Exception:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
@@ -196,6 +197,11 @@ class TaskManager:
 
     def list_tasks(self) -> list:
         """列举所有任务（包含 task_type 字段，v2.0 增强）。"""
+        if supabase_store.enabled():
+            durable = supabase_store.list_tasks()
+            if durable:
+                return durable
+
         working_dir = get_working_dir()
         if not os.path.exists(working_dir):
             return []

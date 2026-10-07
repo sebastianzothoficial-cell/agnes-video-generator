@@ -269,8 +269,13 @@ async def create_simple_task(
     if end_frame_image and end_frame_image.filename:
         state.end_frame_image = await _save_upload_file(end_frame_image, upload_dir, f"{task_id}_end")
 
-    pipeline = deps.create_pipeline_for_type(TaskType.SIMPLE, api_key, task_id, dir_name)
-    app_state.active_pipelines[task_id] = pipeline
+    # En Vercel la tarea se ejecuta exclusivamente en el Queue subscriber.
+    # No construyas el Pipeline pesado dentro de la request: además de ser innecesario,
+    # puede provocar FUNCTION_INVOCATION_FAILED antes de que el mensaje llegue a la cola.
+    pipeline = None
+    if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
+        pipeline = deps.create_pipeline_for_type(TaskType.SIMPLE, api_key, task_id, dir_name)
+        app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
@@ -420,8 +425,11 @@ async def create_creative_task(
             state.scene_reference_images = saved_scene_refs
             logger.info(f"[Pipeline] Saved {len(saved_scene_refs)} user scene reference images for task {task_id}")
 
-    pipeline = deps.create_pipeline_for_type(TaskType.CREATIVE, api_key, task_id, dir_name)
-    app_state.active_pipelines[task_id] = pipeline
+    # En Vercel el Pipeline se construye en el Queue worker, no durante la request.
+    pipeline = None
+    if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
+        pipeline = deps.create_pipeline_for_type(TaskType.CREATIVE, api_key, task_id, dir_name)
+        app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
@@ -552,8 +560,11 @@ async def create_manuscript_task(
         ui_language=get_current_lang(),
     )
 
-    pipeline = deps.create_pipeline_for_type(TaskType.MANUSCRIPT, api_key, task_id, dir_name)
-    app_state.active_pipelines[task_id] = pipeline
+    # En Vercel el Pipeline se construye en el Queue worker, no durante la request.
+    pipeline = None
+    if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
+        pipeline = deps.create_pipeline_for_type(TaskType.MANUSCRIPT, api_key, task_id, dir_name)
+        app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
@@ -674,8 +685,11 @@ async def create_poetry_task(
         ui_language=get_current_lang(),
     )
 
-    pipeline = deps.create_pipeline_for_type(TaskType.POETRY, api_key, task_id, dir_name)
-    app_state.active_pipelines[task_id] = pipeline
+    # En Vercel el Pipeline se construye en el Queue worker, no durante la request.
+    pipeline = None
+    if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
+        pipeline = deps.create_pipeline_for_type(TaskType.POETRY, api_key, task_id, dir_name)
+        app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)
@@ -765,8 +779,11 @@ async def create_anchor_task(
         ui_language=get_current_lang(),
     )
 
-    pipeline = deps.create_pipeline_for_type(TaskType.ANCHOR, api_key, task_id, dir_name)
-    app_state.active_pipelines[task_id] = pipeline
+    # En Vercel el Pipeline se construye en el Queue worker, no durante la request.
+    pipeline = None
+    if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
+        pipeline = deps.create_pipeline_for_type(TaskType.ANCHOR, api_key, task_id, dir_name)
+        app_state.active_pipelines[task_id] = pipeline
 
     tm = TaskManager(task_id, dir_name=dir_name)
     tm.create(state)

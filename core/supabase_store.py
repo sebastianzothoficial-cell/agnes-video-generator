@@ -188,6 +188,12 @@ _FILE_FIELDS = (
 )
 
 def _iter_state_files(state: Any):
+    for field in _FILE_FIELDS = (
+    "reference_image", "end_frame_image", "end_frame_images",
+    "scene_reference_images", "reference_images", "anchor_reference_image",
+)
+
+def _iter_state_files(state: Any):
     for field in _FILE_FIELDS:
         value = getattr(state, field, None)
         if isinstance(value, str) and value:
@@ -203,8 +209,46 @@ def _iter_state_files(state: Any):
                         if isinstance(item, str) and item:
                             yield f"{field}.{key}", item
 
+
+def _manifest_key(field: str, path: str) -> str:
+    """Encode an input field and workspace-relative destination path."""
+    from core.config import get_working_dir
+    workspace = os.path.realpath(get_working_dir())
+    absolute = os.path.realpath(path)
+    relative = os.path.relpath(absolute, workspace)
+    if relative == os.pardir or relative.startswith(os.pardir + os.sep):
+        raise ValueError("input path is outside the active workspace")
+    return f"{field}|{relative}"
+
+
+def _manifest_local_path(relative_path: str) -> str:
+    """Resolve a durable input destination inside the current worker workspace."""
+    from core.config import get_working_dir
+    workspace = os.path.realpath(get_working_dir())
+    candidate = os.path.realpath(os.path.join(workspace, relative_path))
+    if candidate != workspace and not candidate.startswith(workspace + os.sep):
+        raise ValueError("durable input destination escapes workspace")
+    return candidate
+
+
+def _restore_state_input_paths(state: Any, restored: dict[str, list[str]]) -> None:
+    """Rewrite task input fields to paths in the current worker workspace."""
+    for field, paths in restored.items():
+        if "." in field:
+            base, subkey = field.split(".", 1)
+            container = getattr(state, base, None)
+            if isinstance(container, dict):
+                container[subkey] = paths
+            continue
+        current = getattr(state, field, None)
+        if isinstance(current, list):
+            setattr(state, field, paths)
+        elif isinstance(current, str) and paths:
+            setattr(state, field, paths[0])
+
+
 def sync_input_files(state: Any) -> dict[str, str]:
-    """Upload local input files so a later worker can restore them."""
+    """Upload local inputs and store workspace-relative restore destinations."""
     cfg = _config()
     if not cfg:
         return {}
@@ -216,6 +260,7 @@ def sync_input_files(state: Any) -> dict[str, str]:
         name = os.path.basename(path)
         object_path = f"{state.task_id}/inputs/{uuid.uuid4().hex}_{name}"
         try:
+            manifest_key = _manifest_key(field, path)
             with open(path, "rb") as fh:
                 response = requests.post(
                     f"{url}/storage/v1/object/agnes-artifacts/{object_path}",
@@ -224,44 +269,72 @@ def sync_input_files(state: Any) -> dict[str, str]:
                     data=fh, timeout=60,
                 )
             response.raise_for_status()
-            manifest[f"{field}|{path}"] = object_path
+            manifest[manifest_key] = object_path
         except Exception:
-            logger.warning("[Supabase] Input upload failed for %s (%s)", state.task_id, path, exc_info=True)
+            logger.warning("[Supabase] Input upload failed for %s", state.task_id, exc_info=True)
     return manifest
 
-def download_input_files(task_id: str, manifest: dict[str, str]) -> bool:
-    """Restore durable input files and report whether every file was restored."""
+
+def input_manifest_complete(state: Any, manifest: dict[str, str] | None) -> bool:
+    """Check that the durable manifest contains every expected input file."""
+    expected: dict[str, int] = {}
+    for field, _path in _iter_state_files(state):
+        expected[field] = expected.get(field, 0) + 1
+    if not expected:
+        return True
+    actual: dict[str, int] = {}
+    for source in (manifest or {}):
+        if "|" not in source:
+            continue
+        field = source.split("|", 1)[0]
+        actual[field] = actual.get(field, 0) + 1
+    return all(actual.get(field, 0) == count for field, count in expected.items())
+
+
+def download_input_files(
+    task_id: str,
+    manifest: dict[str, str],
+    state: Any | None = None,
+) -> bool:
+    """Restore durable inputs into the current worker workspace.
+
+    New manifests contain relative destinations. Legacy manifests containing
+    absolute paths are still accepted and mapped to the current workspace.
+    """
     cfg = _config()
     if not cfg:
         return not bool(manifest)
     url, key = cfg
     ok = True
+    restored: dict[str, list[str]] = {}
     for source, object_path in (manifest or {}).items():
         if "|" not in source:
             ok = False
             continue
-        _, local_path = source.split("|", 1)
+        field, stored_path = source.split("|", 1)
         try:
-            os.makedirs(os.path.dirname(local_path) or ".", exist_ok=True)
+            if os.path.isabs(stored_path):
+                # Legacy manifest: preserve only the basename under uploads.
+                relative_path = os.path.join("uploads", os.path.basename(stored_path))
+            else:
+                relative_path = stored_path
+            local_path = _manifest_local_path(relative_path)
             response = requests.get(
                 f"{url}/storage/v1/object/agnes-artifacts/{object_path}",
                 headers={"apikey": key, "Authorization": f"Bearer {key}"},
                 timeout=60,
             )
             response.raise_for_status()
+            os.makedirs(os.path.dirname(local_path) or ".", exist_ok=True)
             with open(local_path, "wb") as fh:
                 fh.write(response.content)
             if not os.path.isfile(local_path) or os.path.getsize(local_path) == 0:
                 raise IOError("restored file is missing or empty")
+            restored.setdefault(field, []).append(local_path)
         except Exception:
             ok = False
-            logger.warning("[Supabase] Input restore failed for %s -> %s", task_id, local_path, exc_info=True)
+            logger.warning("[Supabase] Input restore failed for %s", task_id, exc_info=True)
+    if ok and state is not None:
+        _restore_state_input_paths(state, restored)
     return ok
 
-
-def input_manifest_complete(state: Any, manifest: dict[str, str] | None) -> bool:
-    expected = list(_iter_state_files(state))
-    if not expected:
-        return True
-    keys = set((manifest or {}).keys())
-    return all(f"{field}|{path}" in keys for field, path in expected)

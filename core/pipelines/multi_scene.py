@@ -20,7 +20,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-from core.api.agnes_video import VideoTaskCancelled, is_remote_video_failure
+from core.api.agnes_video import VideoTaskCancelled, is_remote_video_failure, is_v25_video_model
 from core.pipelines import BasePipeline, CheckpointPause, PipelineShutdown
 from core.prompting import build_video_prompt
 from models.task import SceneTask, StepStatus
@@ -493,8 +493,11 @@ class MultiScenePipeline(BasePipeline):
         return list(getattr(scene, "ref_images", []) or [])
 
     def _get_scene_duration(self, scene: SceneTask, index: int) -> int:
-        """单场景视频时长。默认 max(scene.duration, 3)。"""
-        return max(int(getattr(scene, "duration", 5)), 3)
+        """Return a provider-compatible duration for one scene."""
+        duration = max(int(getattr(scene, "duration", 5)), 3)
+        if is_v25_video_model(self.video_api.model):
+            return min(max(duration, 4), 12)
+        return duration
 
     def _set_subtitle_paths(self, srt_path: str, styles_path: str) -> None:
         """字幕路径写回 state。子类覆写以匹配各自字段名。"""

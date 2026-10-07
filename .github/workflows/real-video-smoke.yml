@@ -1,0 +1,30 @@
+name: Real video smoke test
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+jobs:
+  real-video:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[real-smoke]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Generate first real video
+        run: python scripts/real_video_smoke_test.py
+      - name: Upload generated video
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-real-agnes-video
+          path: real-video-smoke.mp4
+          retention-days: 7

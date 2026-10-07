@@ -35,6 +35,7 @@ from models.task import (
     SimpleVideoTask,
     SubtitleConfig,
     SubtitleStyle,
+    StepStatus,
     TaskType,
     VideoMode,
 )
@@ -61,7 +62,7 @@ async def _dispatch_pipeline(pipeline, state, task_manager) -> str:
         except Exception as exc:
             logger.error("[Queue] Failed to enqueue task %s: %s", state.task_id, exc, exc_info=True)
             task_manager.update_state(
-                status="failed",
+                status=StepStatus.FAILED,
                 current_status="failed",
                 current_message="No se pudo encolar el pipeline para ejecución en Vercel.",
             )

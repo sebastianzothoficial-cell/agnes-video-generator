@@ -191,7 +191,11 @@ class TaskManager:
                     input_files=self._input_files,
                 )
                 is_vercel = bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
-                if is_vercel and supabase_store.enabled() and not persisted:
+                if is_vercel and not supabase_store.enabled():
+                    raise RuntimeError(
+                        "Supabase durable persistence is not configured for Vercel"
+                    )
+                if is_vercel and not persisted:
                     raise RuntimeError(
                         f"Durable task persistence failed for {self.task_id}"
                     )

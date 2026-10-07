@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 import requests
 
@@ -93,15 +93,28 @@ def upload_final_video(state: Any, *, dir_name: str = "") -> str | None:
         return None
 
 def claim_task(task_id: str) -> bool:
-    """Atomically claim a queued task so at-least-once delivery cannot run it twice."""
+    """Atomically claim a queued task; recover a stale claim after 20 minutes."""
     if not enabled():
         return True
     try:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
         rows = _request(
             "PATCH",
             f"{TABLE}?task_key=eq.{task_id}&status=in.(pending,queued)",
-            payload={"status": "running", "worker_claimed_at": now},
+            payload={"status": "running", "worker_claimed_at": now_iso},
+            prefer="return=representation",
+        ) or []
+        if rows:
+            return True
+        # The configured FastAPI function maxDuration is 900s. A 20-minute
+        # stale threshold safely recovers a hard-crashed worker without
+        # allowing normal 15-minute executions to be claimed twice.
+        stale_before = (now - timedelta(minutes=20)).isoformat()
+        rows = _request(
+            "PATCH",
+            f"{TABLE}?task_key=eq.{task_id}&status=eq.running&worker_claimed_at=lt.{stale_before}",
+            payload={"status": "running", "worker_claimed_at": now_iso},
             prefer="return=representation",
         ) or []
         return bool(rows)

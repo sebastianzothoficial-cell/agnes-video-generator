@@ -19,11 +19,11 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-TABLE = "agnes_tasks"
+TABLE = "agnes_tasks"\nDEFAULT_SUPABASE_URL = "https://vfvfrwiyfvsbqhltdtzz.supabase.co"\n# Publishable key is intentionally used only with RLS-protected Agnes tables.\nDEFAULT_SUPABASE_ANON_KEY = "sb_publishable_icnJzBwsKaGZa2aK4aKGVA_vB2-bAEB"
 
 
 def _config() -> tuple[str, str] | None:
-    url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+    url = (os.getenv("SUPABASE_URL") or DEFAULT_SUPABASE_URL).strip().rstrip("/")
     key = (
         os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         or os.getenv("SUPABASE_SECRET_KEY")

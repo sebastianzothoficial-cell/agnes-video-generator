@@ -12,7 +12,7 @@ from fastapi import APIRouter, Form, HTTPException
 
 logger = logging.getLogger(__name__)
 
-from core.api.agnes_models import fetch_available_models
+from core.api.agnes_models import fetch_available_models, get_fallback_models
 from core.api.key_manager import reset_key_ring
 from core.api.providers.base import probe_text_models
 from core.api.rate_limiter import reset_rate_limiter
@@ -455,8 +455,6 @@ async def list_models(refresh: bool = False):
     仅“刷新列表”按钮（?refresh=1）或缓存过期时才重新请求外部接口。
     """
     key = get_api_key()
-    if not key:
-        raise HTTPException(status_code=400, detail=translate("config.api_key_not_configured"))
     now = time.time()
     if (
         not refresh
@@ -472,7 +470,7 @@ async def list_models(refresh: bool = False):
             "app_version": APP_VERSION,
             "video_capabilities": get_video_model_capabilities(),
         }
-    grouped = fetch_available_models(key)
+    grouped = fetch_available_models(key) if key else get_fallback_models()
     _MODEL_CACHE["models"] = grouped
     _MODEL_CACHE["ts"] = now
     return {

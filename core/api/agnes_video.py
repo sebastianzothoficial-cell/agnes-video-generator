@@ -903,6 +903,8 @@ class AgnesVideoAPI:
                 generation_mode=generation_mode,
                 first_frame_path=first_frame_path,
                 last_frame_path=last_frame_path,
+                reference_audio_paths=reference_audio_paths,
+                reference_video_path=reference_video_path,
                 **kwargs,
             )
         num_frames, frame_rate = self._get_frame_config(duration, width, height)
@@ -970,6 +972,8 @@ class AgnesVideoAPI:
         generation_mode: Optional[str] = None,
         first_frame_path: Optional[str] = None,
         last_frame_path: Optional[str] = None,
+        reference_audio_paths: Optional[List[str]] = None,
+        reference_video_path: Optional[str] = None,
         **kwargs,
     ) -> str:
         """Submit Agnes Video 2.5/Flash using the documented mode contract.
@@ -978,8 +982,10 @@ class AgnesVideoAPI:
         reference -> images/audios/videos
         keyframe  -> first_frame and/or last_frame
 
-        Local input paths are resolved to publicly reachable URLs before the
-        request because Agnes fetches media asynchronously after submission.
+        Local image input paths are resolved to publicly reachable URLs before
+        the request because Agnes fetches media asynchronously after submission.
+        Audio/video references must already be public URLs; Agnes cannot fetch
+        a local filesystem path from the provider.
         """
         secs = int(duration) if duration else 5
         if secs < 4 or secs > 12:
@@ -1045,9 +1051,27 @@ class AgnesVideoAPI:
             for p in reference_image_paths:
                 norm = await asyncio.to_thread(normalize_reference_path, p, width, height)
                 resolved_refs.append(await self._resolve_image_ref(norm))
-            if not resolved_refs:
-                raise ValueError("Agnes reference mode requires at least one image reference")
-            payload["images"] = resolved_refs
+            if resolved_refs:
+                payload["images"] = resolved_refs
+
+            audio_refs = list(reference_audio_paths or [])
+            if len(audio_refs) > 3:
+                raise ValueError(f"{self.model} accepts at most 3 audio reference(s)")
+            for ref in audio_refs:
+                if not isinstance(ref, str) or not ref.startswith(("http://", "https://")):
+                    raise ValueError("Agnes reference audio must use a public http(s) URL")
+            if audio_refs:
+                payload["audios"] = audio_refs
+
+            if reference_video_path:
+                if self.model == "agnes-video-2.5-flash":
+                    raise ValueError("agnes-video-2.5-flash does not support reference videos")
+                if not isinstance(reference_video_path, str) or not reference_video_path.startswith(("http://", "https://")):
+                    raise ValueError("Agnes reference video must use a public http(s) URL")
+                payload["videos"] = [reference_video_path]
+
+            if not resolved_refs and not audio_refs and not reference_video_path:
+                raise ValueError("Agnes reference mode requires at least one reference image, audio, or video")
 
         logger.info(
             "[AgnesVideo] %s mode=%s duration=%ss size=%s aspect=%s prompt=%s...",

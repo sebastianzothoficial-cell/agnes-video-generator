@@ -143,6 +143,8 @@ def _effective_capabilities(catalog: dict[str, Any], model: str) -> dict[str, An
         "keyframes": keyframes,
         "durations": [int(v) for v in durations] if isinstance(durations, (list, tuple, set)) else [],
         "max_ref_images": max_refs,
+        "max_ref_audio": provider_caps.get("max_ref_audio", local.get("max_ref_audio")),
+        "max_ref_videos": provider_caps.get("max_ref_videos", local.get("max_ref_videos", 1 if local.get("supports_ref_video") else 0)),
         "sizes": [str(v) for v in sizes],
         "ratios": list(resolution.get("ratios") or []) if isinstance(resolution, dict) else [],
         "supports_negative": bool(supports_negative),

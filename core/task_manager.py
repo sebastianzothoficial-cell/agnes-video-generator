@@ -13,7 +13,8 @@ from datetime import datetime
 from typing import Optional
 
 from core.config import get_working_dir
-from core.path_security import UnsafePathError, safe_join\nfrom core import supabase_store
+from core.path_security import UnsafePathError, safe_join
+from core import supabase_store
 from models.task import (
     BaseTaskState,
     CreativeVideoTask,

@@ -133,9 +133,14 @@ class VideoStepsMixin:
         Falls back to ``self._state.video_duration`` when the scene object
         is not available (e.g. before scenes are created).
         """
-        if scene_idx < len(self._state.scenes):
-            return float(self._state.scenes[scene_idx].duration)
-        return float(self._state.video_duration)
+        duration = (
+            float(self._state.scenes[scene_idx].duration)
+            if scene_idx < len(self._state.scenes)
+            else float(self._state.video_duration)
+        )
+        if is_v25_video_model(self.video_generator.model):
+            return float(min(max(int(duration), 4), 12))
+        return duration
 
     async def _generate_independent_scenes(
         self, scenes: list, character_ref_path: str, vw: int, vh: int

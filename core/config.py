@@ -1211,8 +1211,8 @@ VIDEO_MODEL_CAPABILITIES = {
         "label": "Video 2.5",
         "price": "paid",
         "price_text": {
-            "zh": "付费：720P $0.025/s · 960P $0.04/s · 2K $0.055/s；图片前 5 张免费",
-            "en": "Paid: 720P $0.025/s · 960P $0.04/s · 2K $0.055/s; first 5 images free",
+            "zh": "付费：720P $0.025/s · 1080P/1K $0.04/s · 2K $0.055/s；图片前 5 张免费",
+            "en": "Paid: 720P $0.025/s · 1080P/1K $0.04/s · 2K $0.055/s; first 5 images free",
         },
         "modes": [
             {"id": "text", "label": {"zh": "文生视频", "en": "Text to video"}},
@@ -1239,7 +1239,7 @@ VIDEO_MODEL_CAPABILITIES = {
         "price_text": {"zh": "免费（限时）", "en": "Free (limited time)"},
         "modes": [
             {"id": "text", "label": {"zh": "文生视频", "en": "Text to video"}},
-            {"id": "keyframe", "label": {"zh": "首尾帧（自动降级图片参考）", "en": "First/last frame (auto fallback)"}},
+            {"id": "keyframe", "label": {"zh": "首尾帧", "en": "First/last frame"}},
             {"id": "reference", "label": {"zh": "图片参考（≤5 张）", "en": "Image reference (≤5)"}},
         ],
         "durations": VIDEO_25_DURATIONS,

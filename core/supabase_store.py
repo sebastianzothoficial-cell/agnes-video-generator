@@ -229,14 +229,16 @@ def sync_input_files(state: Any) -> dict[str, str]:
             logger.warning("[Supabase] Input upload failed for %s (%s)", state.task_id, path, exc_info=True)
     return manifest
 
-def download_input_files(task_id: str, manifest: dict[str, str]) -> None:
-    """Restore durable input files into their original local paths."""
+def download_input_files(task_id: str, manifest: dict[str, str]) -> bool:
+    """Restore durable input files and report whether every file was restored."""
     cfg = _config()
     if not cfg:
-        return
+        return not bool(manifest)
     url, key = cfg
+    ok = True
     for source, object_path in (manifest or {}).items():
         if "|" not in source:
+            ok = False
             continue
         _, local_path = source.split("|", 1)
         try:
@@ -249,8 +251,12 @@ def download_input_files(task_id: str, manifest: dict[str, str]) -> None:
             response.raise_for_status()
             with open(local_path, "wb") as fh:
                 fh.write(response.content)
+            if not os.path.isfile(local_path) or os.path.getsize(local_path) == 0:
+                raise IOError("restored file is missing or empty")
         except Exception:
+            ok = False
             logger.warning("[Supabase] Input restore failed for %s -> %s", task_id, local_path, exc_info=True)
+    return ok
 
 
 def input_manifest_complete(state: Any, manifest: dict[str, str] | None) -> bool:

@@ -119,3 +119,18 @@ def _task_id_from_uuid(value: str) -> str:
 
 def _iso_or_none(value: Any) -> str | None:
     return value if value else None
+
+
+def get_final_video_url(task_id: str) -> str | None:
+    """Return the durable public URL for a completed final video, if recorded."""
+    if not enabled():
+        return None
+    try:
+        rows = _request(
+            "GET",
+            f"agnes_artifacts?select=public_url&task_id=eq.{_uuid_for_task(task_id)}&artifact_type=eq.final_video&limit=1",
+        ) or []
+        return rows[0].get("public_url") if rows else None
+    except Exception:
+        logger.warning("[Supabase] Artifact URL lookup failed for %s", task_id, exc_info=True)
+        return None

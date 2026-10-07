@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 import requests
 
@@ -91,6 +92,22 @@ def upload_final_video(state: Any, *, dir_name: str = "") -> str | None:
         logger.warning("[Supabase] Final video upload failed for %s", getattr(state, "task_id", "?"), exc_info=True)
         return None
 
+def claim_task(task_id: str) -> bool:
+    """Atomically claim a queued task so at-least-once delivery cannot run it twice."""
+    if not enabled():
+        return True
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        rows = _request(
+            "PATCH",
+            f"{TABLE}?task_key=eq.{task_id}&status=in.(pending,queued)",
+            payload={"status": "running", "worker_claimed_at": now},
+            prefer="return=representation",
+        ) or []
+        return bool(rows)
+    except Exception:
+        logger.warning("[Supabase] Task claim failed for %s", task_id, exc_info=True)
+        return False
 def get_task(task_id: str) -> dict | None:
     if not enabled(): return None
     try:

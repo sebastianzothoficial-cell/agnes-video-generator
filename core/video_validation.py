@@ -161,6 +161,9 @@ def validate_video_request(
     aspect_ratio: str | None = None,
     has_negative_prompt: bool = False,
     media_pending: bool = False,
+    reference_image_count: int = 0,
+    reference_audio_count: int = 0,
+    reference_video_count: int = 0,
 ) -> dict[str, Any]:
     """Validate a video request before a durable task is created."""
     model = (model or "").strip()
@@ -194,8 +197,12 @@ def validate_video_request(
         )
 
     caps = _effective_capabilities(catalog, model)
-    has_first_or_reference = bool(has_reference)
-    has_any_media = bool(has_reference or has_end_frame)
+    if min(reference_image_count, reference_audio_count, reference_video_count) < 0:
+        raise HTTPException(status_code=422, detail="Las cantidades de referencias no pueden ser negativas.")
+
+    has_first_or_reference = bool(has_reference or reference_image_count)
+    has_any_reference_media = bool(reference_image_count or reference_audio_count or reference_video_count)
+    has_any_media = bool(has_any_reference_media or has_end_frame or has_reference)
 
     if mode in {"t2v", "text"}:
         if not caps["t2v"]:
@@ -220,10 +227,10 @@ def validate_video_request(
                 status_code=422,
                 detail="El modo image-to-video requiere al menos una imagen de referencia.",
             )
-        if has_end_frame:
+        if has_end_frame or reference_audio_count or reference_video_count:
             raise HTTPException(
                 status_code=422,
-                detail="Image-to-video no acepta un end frame; usa el modo keyframes.",
+                detail="Image-to-video solo admite imágenes de referencia; usa reference para audio/video.",
             )
 
     if mode == "keyframes":
@@ -272,12 +279,21 @@ def validate_video_request(
         )
 
     max_refs = caps["max_ref_images"]
-    ref_count = int(bool(has_reference)) if mode == "i2v" else 0
+    ref_count = reference_image_count if reference_image_count else (int(bool(has_reference)) if mode == "i2v" else 0)
     if max_refs is not None and ref_count > int(max_refs):
         raise HTTPException(
             status_code=422,
             detail=f"El modelo '{model}' admite como máximo {max_refs} imagen(es) de referencia.",
         )
+
+    max_audio = caps.get("max_ref_audio")
+    max_videos = caps.get("max_ref_videos", 1 if caps.get("supports_ref_video") else 0)
+    if mode != "reference" and (reference_audio_count or reference_video_count):
+        raise HTTPException(status_code=422, detail="Audio/video de referencia solo están disponibles en modo reference.")
+    if max_audio is not None and reference_audio_count > int(max_audio):
+        raise HTTPException(status_code=422, detail=f"El modelo '{model}' admite como máximo {max_audio} audio(s) de referencia.")
+    if reference_video_count > int(max_videos or 0):
+        raise HTTPException(status_code=422, detail=f"El modelo '{model}' no admite esa cantidad de video(s) de referencia.")
 
     return {
         "verified": True,
@@ -296,5 +312,8 @@ def validate_video_request(
             "aspect_ratio": aspect_ratio,
             "has_negative_prompt": has_negative_prompt,
             "media_pending": media_pending,
+            "reference_image_count": reference_image_count,
+            "reference_audio_count": reference_audio_count,
+            "reference_video_count": reference_video_count,
         },
     }

@@ -35,7 +35,7 @@ def _request(method: str, path: str, *, payload: Any = None, timeout: float = 8.
     response.raise_for_status()
     return response.json() if response.content else None
 
-def upsert_task(state: Any, *, dir_name: str = "") -> bool:
+def upsert_task(state: Any, *, dir_name: str = "", input_files: dict[str, str] | None = None) -> bool:
     if not enabled(): return False
     try:
         data = state.model_dump(mode="json")
@@ -51,7 +51,7 @@ def upsert_task(state: Any, *, dir_name: str = "") -> bool:
             "input_payload": data,
             "config": {"dir_name": dir_name, "video_width": data.get("video_width"),
                        "video_height": data.get("video_height"),
-                       "input_files": sync_input_files(state)},
+                       "input_files": input_files or {}},
             "progress": max(0, min(100, int(progress * 100) if progress <= 1 else int(progress))),
             "error_message": data.get("current_message") if str(status) == "failed" else None,
             "error_details": {"traceback": data.get("error_traceback", "")} if data.get("error_traceback") else None,

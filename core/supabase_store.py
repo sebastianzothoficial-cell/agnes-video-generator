@@ -206,3 +206,11 @@ def download_input_files(task_id: str, manifest: dict[str, str]) -> None:
                 fh.write(response.content)
         except Exception:
             logger.warning("[Supabase] Input restore failed for %s -> %s", task_id, local_path, exc_info=True)
+
+
+def input_manifest_complete(state: Any, manifest: dict[str, str] | None) -> bool:
+    expected = list(_iter_state_files(state))
+    if not expected:
+        return True
+    keys = set((manifest or {}).keys())
+    return all(f"{field}|{path}" in keys for field, path in expected)

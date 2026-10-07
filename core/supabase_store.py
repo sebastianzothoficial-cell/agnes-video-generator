@@ -3,7 +3,7 @@
 The video pipeline still uses its local working directory while it is executing,
 but task metadata/state is mirrored to Supabase so Vercel restarts do not erase
 the task registry. Configuration is opt-in through SUPABASE_URL and
-SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY).
+SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY). For development-only\npublic deployments, SUPABASE_ANON_KEY can be used when the Agnes tables\nhave matching RLS policies.
 
 This module deliberately has no dependency on the Supabase Python SDK; it uses
 the PostgREST API already exposed by Supabase.
@@ -109,7 +109,7 @@ def list_tasks() -> list[dict]:
     try:
         rows = _request(
             "GET",
-            f"{TABLE}?select=id,task_type,status,title,config,created_at,updated_at&order=created_at.desc",
+            f"{TABLE}?select=id,task_key,task_type,status,title,config,created_at,updated_at&order=created_at.desc",
         ) or []
         result = []
         for row in rows:

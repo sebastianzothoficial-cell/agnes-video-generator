@@ -4,6 +4,11 @@ from core.api.openrouter_planner import OpenRouterPlanningError, _extract_json, 
 def test_extracts_json_from_fenced_response():
     assert _extract_json('```json\n{"prompt":"x"}\n```')['prompt'] == 'x'
 
+def test_rejects_unsupported_agnes_model():
+    data={'prompt':'x','duration':5,'aspect_ratio':'16:9','size':'720P','model':'other-video-model','mode':'text'}
+    with pytest.raises(OpenRouterPlanningError): _validate_plan(data)
+
+
 def test_validates_agnes_flash_contract():
     plan = _validate_plan({'prompt':'x','duration':5,'aspect_ratio':'16:9','size':'1080P','model':'agnes-video-2.5-flash','mode':'text'})
     assert plan.size == '720P'

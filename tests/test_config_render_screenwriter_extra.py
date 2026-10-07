@@ -53,10 +53,15 @@ def client():
 
 
 class TestListModels:
-    def test_no_api_key_400(self, client, monkeypatch):
+    def test_no_api_key_returns_builtin_catalog(self, client, monkeypatch):
         monkeypatch.setattr(config_routes, "get_api_key", lambda: "")
+        monkeypatch.setattr(config_routes, "_MODEL_CACHE", {"models": None, "ts": 0.0, "ttl": 300})
         resp = client.get("/api/models")
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["models"]["text"]
+        assert body["models"]["image"]
+        assert body["models"]["video"]
 
     def test_fresh_fetch(self, client, monkeypatch):
         monkeypatch.setattr(config_routes, "get_api_key", lambda: "sk-test")

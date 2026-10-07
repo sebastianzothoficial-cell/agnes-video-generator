@@ -35,3 +35,6 @@ Pillow>=9.0.0                   # 图片归一化（optimization_roadmap §2，u
 # 显式声明后，npm 包（bin/cli.js）与 Docker 均能在无宿主机 ffmpeg 时一键拿到二进制，
 # 用户无需另行安装系统级 ffmpeg。此前仅靠 moviepy 的传递依赖隐式引入，存在断裂风险。
 imageio-ffmpeg>=0.2.0,<1.0.0
+
+# Durable Vercel Queue worker for pipeline execution
+vercel-queue>=0.9.0,<1.0.0

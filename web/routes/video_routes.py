@@ -13,6 +13,7 @@ import tempfile
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 
+from core import supabase_store
 from core.api.agnes_image import AgnesImageAPI
 from core.api.chat_providers import get_or_build_text_chat_client
 from core.artifacts import (
@@ -29,7 +30,6 @@ from core.dependency_graph import get_dependency_graph
 from core.i18n_backend import translate
 from core.path_security import UnsafePathError, safe_join
 from core.task_manager import TaskManager
-from core import supabase_store
 from models.task import StepStatus
 from utils.network import describe_network_error
 from web import app_state, helpers

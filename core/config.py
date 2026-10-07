@@ -257,9 +257,17 @@ try:
         agnes_rate_burst: int | None = None
         agnes_video_rate_burst: int | None = None
 
-        # ── 模型 / 提示词 ──
+        # ── 模型 / prompts ──
         agnes_image_i2i_model: str | None = None
         prompt_language: str = "zh"
+
+        # ── OpenRouter planning layer ──
+        # Credentials stay server-side; the planner is enabled only when a key exists.
+        openrouter_api_key: str = ""
+        openrouter_model: str = ""
+        openrouter_base_url: str = "https://openrouter.ai/api/v1"
+        openrouter_required: bool = False
+        openrouter_timeout: int = 120
 
         # ── 合成 / 字幕 ──
         agnes_subtitle_ass: bool = True          # 2.1c 字幕 ASS 单链灰度开关

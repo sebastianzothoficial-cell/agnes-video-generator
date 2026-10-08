@@ -4,7 +4,7 @@ import os
 import re
 from typing import List
 
-from core.api.agnes_video import is_remote_video_failure
+from core.api.agnes_video import is_remote_video_failure, is_v25_video_model
 from core.pipelines import PipelineShutdown
 from models.task import StepStatus
 

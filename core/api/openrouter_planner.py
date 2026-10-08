@@ -28,35 +28,48 @@ def _extract_json(content: str) -> dict:
     text = (content or '').strip()
     if text.startswith('```'):
         lines = text.splitlines()[1:]
-        if lines and lines[-1].strip() == '```': lines = lines[:-1]
+        if lines and lines[-1].strip() == '```':
+            lines = lines[:-1]
         text = '\n'.join(lines).strip()
     try:
         value = json.loads(text)
     except json.JSONDecodeError as exc:
         start, end = text.find('{'), text.rfind('}')
-        if start < 0 or end <= start: raise OpenRouterPlanningError('OpenRouter returned invalid JSON') from exc
-        try: value = json.loads(text[start:end + 1])
-        except json.JSONDecodeError as inner: raise OpenRouterPlanningError('OpenRouter returned invalid JSON') from inner
-    if not isinstance(value, dict): raise OpenRouterPlanningError('OpenRouter plan must be a JSON object')
+        if start < 0 or end <= start:
+            raise OpenRouterPlanningError('OpenRouter returned invalid JSON') from exc
+        try:
+            value = json.loads(text[start:end + 1])
+        except json.JSONDecodeError as inner:
+            raise OpenRouterPlanningError('OpenRouter returned invalid JSON') from inner
+    if not isinstance(value, dict):
+        raise OpenRouterPlanningError('OpenRouter plan must be a JSON object')
     return value
 
 def _validate_plan(data: dict) -> VideoPlan:
-    try: plan = VideoPlan.model_validate(data)
-    except ValidationError as exc: raise OpenRouterPlanningError(f'OpenRouter plan validation failed: {exc}') from exc
-    if not 4 <= plan.duration <= 12: raise OpenRouterPlanningError('OpenRouter returned unsupported duration')
-    if plan.aspect_ratio not in {'21:9','16:9','4:3','1:1','3:4','9:16'}: raise OpenRouterPlanningError('OpenRouter returned unsupported aspect ratio')
-    if plan.mode not in {'text','keyframe','reference'}: raise OpenRouterPlanningError('OpenRouter returned unsupported Agnes mode')
+    try:
+        plan = VideoPlan.model_validate(data)
+    except ValidationError as exc: raise OpenRouterPlanningError(f'OpenRouter plan validation failed:
+        {exc}') from exc
+    if not 4 <= plan.duration <= 12:
+        raise OpenRouterPlanningError('OpenRouter returned unsupported duration')
+    if plan.aspect_ratio not in {'21:9','16:9','4:3','1:1','3:4','9:16'}:
+        raise OpenRouterPlanningError('OpenRouter returned unsupported aspect ratio')
+    if plan.mode not in {'text','keyframe','reference'}:
+        raise OpenRouterPlanningError('OpenRouter returned unsupported Agnes mode')
     if plan.model not in {'agnes-video-2.5-flash','agnes-video-2.5'}:
         raise OpenRouterPlanningError('OpenRouter returned an unsupported Agnes video model')
-    if plan.model.startswith('agnes-video-2.5-flash'): plan.size = '720P'
+    if plan.model.startswith('agnes-video-2.5-flash'):
+        plan.size = '720P'
     return plan
 
 def plan_video(user_idea: str) -> VideoPlan:
     settings = get_settings()
     api_key = (settings.openrouter_api_key or '').strip()
-    if not api_key: raise OpenRouterPlanningError('OPENROUTER_API_KEY is not configured')
+    if not api_key:
+        raise OpenRouterPlanningError('OPENROUTER_API_KEY is not configured')
     model = (settings.openrouter_model or '').strip()
-    if not model: raise OpenRouterPlanningError('OPENROUTER_MODEL is not configured')
+    if not model:
+        raise OpenRouterPlanningError('OPENROUTER_MODEL is not configured')
     base_url = (settings.openrouter_base_url or 'https://openrouter.ai/api/v1').rstrip('/')
     logger.info('[OPENROUTER] request started')
     try:
@@ -66,17 +79,26 @@ def plan_video(user_idea: str) -> VideoPlan:
             json={'model': model, 'messages': [{'role':'system','content':_SYSTEM_PROMPT},{'role':'user','content':user_idea.strip()}], 'temperature':0.2, 'response_format':{'type':'json_object'}},
             timeout=max(10, int(settings.openrouter_timeout)),
         )
-        if response.status_code == 401: raise OpenRouterPlanningError('OpenRouter authentication failed')
-        if response.status_code == 403: raise OpenRouterPlanningError('OpenRouter access forbidden')
-        if response.status_code == 429: raise OpenRouterPlanningError('OpenRouter rate limit exceeded')
-        if response.status_code >= 500: raise OpenRouterPlanningError(f'OpenRouter provider error (HTTP {response.status_code})')
+        if response.status_code == 401:
+            raise OpenRouterPlanningError('OpenRouter authentication failed')
+        if response.status_code == 403:
+            raise OpenRouterPlanningError('OpenRouter access forbidden')
+        if response.status_code == 429:
+            raise OpenRouterPlanningError('OpenRouter rate limit exceeded')
+        if response.status_code >= 500:
+            raise OpenRouterPlanningError(f'OpenRouter provider error (HTTP {response.status_code})')
         response.raise_for_status()
         payload = response.json()
-    except OpenRouterPlanningError: raise
-    except requests.Timeout as exc: raise OpenRouterPlanningError('OpenRouter request timed out') from exc
-    except requests.RequestException as exc: raise OpenRouterPlanningError('OpenRouter request failed') from exc
-    try: content = payload['choices'][0]['message']['content']
-    except (KeyError, IndexError, TypeError) as exc: raise OpenRouterPlanningError('OpenRouter response did not contain a message') from exc
+    except OpenRouterPlanningError:
+        raise
+    except requests.Timeout as exc:
+        raise OpenRouterPlanningError('OpenRouter request timed out') from exc
+    except requests.RequestException as exc:
+        raise OpenRouterPlanningError('OpenRouter request failed') from exc
+    try:
+        content = payload['choices'][0]['message']['content']
+    except (KeyError, IndexError, TypeError) as exc:
+        raise OpenRouterPlanningError('OpenRouter response did not contain a message') from exc
     plan = _validate_plan(_extract_json(content))
     logger.info('[OPENROUTER] prompt generated')
     return plan

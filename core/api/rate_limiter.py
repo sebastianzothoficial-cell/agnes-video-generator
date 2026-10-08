@@ -309,7 +309,7 @@ def request_with_key_rotation(
     """
     import requests
 
-    from core.config import get_base_url_for_key
+    from core.config import get_agnes_base_urls_for_key, get_base_url_for_key
 
     ring = key_ring or get_key_ring()
     base_headers = requester_kwargs.pop("headers", None) or {}
@@ -319,12 +319,40 @@ def request_with_key_rotation(
     max_rotations = len(ring) * max_retries
     while True:
         # 每请求前轮转 Key：round-robin 均匀分摊；429 换 Key（rotate 推进计数）后
-        # 下次 next() 自然取到下一个 Key。URL 按该 Key 绑定域名动态拼接。
+        # 下次 next() 自然取到下一个 Key。正常情况下使用该 Key 的首选域名。
         key = ring.next()
         headers = {**base_headers, "Authorization": f"Bearer {key}"}
-        url = f"{get_base_url_for_key(key)}{endpoint}"
+        base_urls = get_agnes_base_urls_for_key(key)
+        resp = None
+        first_401 = None
         try:
-            resp = requester(url, headers=headers, **requester_kwargs)
+            # Agnes 国际站 / 中国站对同一个 Key 使用不同的鉴权域名。
+            # 如果首选域名返回 401，优先把它当作「Key/域名不匹配」处理：
+            # 尝试其他 Agnes endpoint，而不是把同一个 401 当成普通重试。
+            # 这不切换供应商，也不触发 5xx/429 退避。
+            for base_url in base_urls:
+                url = f"{base_url}{endpoint}"
+                try:
+                    resp = requester(url, headers=headers, **requester_kwargs)
+                except (requests.ConnectionError, requests.Timeout):
+                    if first_401 is not None and base_url != base_urls[-1]:
+                        continue
+                    raise
+                if resp.status_code != 401:
+                    break
+                if first_401 is None:
+                    first_401 = resp
+                if base_url != base_urls[-1]:
+                    logger.warning(
+                        "[KeyRotation] Agnes returned HTTP 401 on configured endpoint; "
+                        "trying another compatible Agnes endpoint"
+                    )
+
+            # If every endpoint rejected the credentials, preserve the original
+            # response so callers keep the configured endpoint's HTTP semantics.
+            if first_401 is not None and resp is not None and resp.status_code == 401:
+                resp = first_401
+        except (requests.ConnectionError, requests.Timeout) as e:
         except (requests.ConnectionError, requests.Timeout) as e:
             timeout_limit = timeout_retry_limit if timeout_retry_limit is not None else max_retries
             if timeout_retries < timeout_limit and retries < max_retries:

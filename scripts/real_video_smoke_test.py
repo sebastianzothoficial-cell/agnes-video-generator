@@ -23,4 +23,5 @@ async def main():
         raise SystemExit('Agnes completed without a usable video file')
     print(json.dumps({'status':'completed','video_id':video_id,'video_path':str(out),'bytes':out.stat().st_size}))
 
-if __name__ == '__main__': asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())

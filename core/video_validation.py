@@ -174,7 +174,7 @@ def validate_video_request(
     if not model:
         raise HTTPException(status_code=422, detail="No hay un modelo de video seleccionado.")
 
-    if mode not in {"t2v", "text", "i2v", "keyframes"}:
+    if mode not in {"t2v", "text", "i2v", "reference", "keyframes"}:
         raise HTTPException(status_code=422, detail=f"Modo de video no soportado: {mode}.")
 
     if duration < 1:
@@ -218,7 +218,7 @@ def validate_video_request(
                 detail="El modo text-to-video no acepta imágenes de referencia ni frames.",
             )
 
-    if mode == "i2v":
+    if mode in {"i2v", "reference"}:
         if not caps["i2v"]:
             raise HTTPException(
                 status_code=422,
@@ -227,9 +227,9 @@ def validate_video_request(
         if not has_first_or_reference and not media_pending:
             raise HTTPException(
                 status_code=422,
-                detail="El modo image-to-video requiere al menos una imagen de referencia.",
+                detail="El modo reference/image-to-video requiere al menos una imagen de referencia.",
             )
-        if has_end_frame or reference_audio_count or reference_video_count:
+        if mode == "i2v" and (has_end_frame or reference_audio_count or reference_video_count):
             raise HTTPException(
                 status_code=422,
                 detail="Image-to-video solo admite imágenes de referencia; usa reference para audio/video.",
@@ -241,7 +241,7 @@ def validate_video_request(
                 status_code=422,
                 detail=f"No es posible generar esta escena con '{model}' porque no soporta keyframes.",
             )
-        if not has_any_media and not media_pending:
+        if not (has_end_frame or media_pending):
             raise HTTPException(
                 status_code=422,
                 detail="El modo keyframes requiere first_frame, last_frame o ambos.",

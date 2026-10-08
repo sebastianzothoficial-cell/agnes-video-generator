@@ -16,7 +16,7 @@ from core.config import (
     DEFAULT_IMAGE_MODEL,
     DEFAULT_TEXT_MODEL,
     DEFAULT_VIDEO_MODEL,
-    get_base_url_for_key,
+    get_agnes_base_urls_for_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,19 +132,39 @@ def fetch_model_catalog(api_key: str) -> dict[str, Any]:
             "status_code": None,
         }
 
-    endpoint = f"{get_base_url_for_key(api_key)}/models"
+    base_urls = get_agnes_base_urls_for_key(api_key)
     try:
-        resp = requests.get(
-            endpoint,
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=REQUEST_TIMEOUT,
-        )
-        if resp.status_code != 200:
+        first_401 = None
+        resp = None
+        endpoint = f"{base_urls[0]}/models"
+        for base_url in base_urls:
+            endpoint = f"{base_url}/models"
+            resp = requests.get(
+                endpoint,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=REQUEST_TIMEOUT,
+            )
+            if resp.status_code != 401:
+                break
+            if first_401 is None:
+                first_401 = resp
+            if base_url != base_urls[-1]:
+                logger.warning(
+                    "[AgnesModels] model catalog returned HTTP 401; "
+                    "trying another compatible Agnes endpoint"
+                )
+
+        if first_401 is not None and resp is not None and resp.status_code == 401:
+            resp = first_401
+            endpoint = f"{base_urls[0]}/models"
+
+        if resp is None or resp.status_code != 200:
             # Do not expose response bodies: provider errors can contain
             # request metadata and must never end up in logs/UI.
+            status_code = resp.status_code if resp is not None else None
             logger.warning(
                 "[AgnesModels] catalog request failed status=%s endpoint=%s",
-                resp.status_code,
+                status_code,
                 endpoint.split("/v1/")[0] + "/v1/models",
             )
             return {
@@ -152,8 +172,12 @@ def fetch_model_catalog(api_key: str) -> dict[str, Any]:
                 "model_details": {},
                 "source": "fallback",
                 "synced": False,
-                "error": f"Agnes model catalog returned HTTP {resp.status_code}",
-                "status_code": resp.status_code,
+                "error": (
+                    f"Agnes model catalog returned HTTP {status_code}"
+                    if status_code is not None
+                    else "Agnes model catalog request failed"
+                ),
+                "status_code": status_code,
             }
 
         data = resp.json()

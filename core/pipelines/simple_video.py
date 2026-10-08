@@ -172,40 +172,78 @@ class SimpleVideoPipeline(BasePipeline):
         # OpenRouter is the real planning layer for simple text generation.
         # If configured, its validated plan becomes the Agnes request; secrets stay server-side.
         if not ref_images and not first_frame and not last_frame:
-            try:
-                plan = await asyncio.to_thread(plan_video, self._state.prompt)
-                processed_prompt = plan.prompt
-                # The UI-selected Agnes model remains authoritative. OpenRouter
-                # plans prompt/parameters; it never becomes the video provider.
+            from core.config import get_settings
+
+            settings = get_settings()
+            planner_configured = bool(
+                (settings.openrouter_api_key or "").strip()
+                and (settings.openrouter_model or "").strip()
+            )
+            if planner_configured:
+                try:
+                    plan = await asyncio.to_thread(plan_video, self._state.prompt)
+                    processed_prompt = plan.prompt
+                    # The UI-selected Agnes model remains authoritative. OpenRouter
+                    # plans prompt/parameters; it never becomes the video provider.
+                    validate_video_request(
+                        api_key=self.api_key,
+                        model=self.video_api.model,
+                        mode=plan.mode,
+                        duration=plan.duration,
+                        video_size=plan.size,
+                        aspect_ratio=plan.aspect_ratio,
+                    )
+                    self._state.duration = plan.duration
+                    self._state.video_size = plan.size
+                    ratio_sizes = {
+                        "21:9": (1680, 720), "16:9": (1280, 720), "4:3": (960, 720),
+                        "1:1": (720, 720), "3:4": (720, 960), "9:16": (720, 1280),
+                    }
+                    if plan.aspect_ratio in ratio_sizes:
+                        self._state.video_width, self._state.video_height = ratio_sizes[plan.aspect_ratio]
+                    self._state.generation_metadata = {
+                        "planner": "openrouter",
+                        "planner_suggested_model": plan.model,
+                        "model": self.video_api.model,
+                        "title": plan.title,
+                        "negative_prompt": plan.negative_prompt,
+                        "aspect_ratio": plan.aspect_ratio,
+                    }
+                    self._state.negative_prompt = plan.negative_prompt or self._state.negative_prompt
+                    logger.info("[Simple] OpenRouter plan accepted; sending prompt to Agnes")
+                except OpenRouterPlanningError as exc:
+                    logger.error("[Simple] OpenRouter planning failed: %s", exc)
+                    if settings.openrouter_required:
+                        raise RuntimeError(f"OpenRouter: {exc}") from exc
+                    plan = None
+            else:
+                plan = None
+
+            if plan is None:
+                spec = build_video_prompt(
+                    self._state.prompt,
+                    style=self._state.system_prompt.strip() or "cinematic",
+                    scene="single coherent scene",
+                    subject="the main subject described by the original prompt",
+                    action="the main action described by the original prompt",
+                    reference_consistency="no external reference; preserve one coherent shot",
+                )
+                processed_prompt = spec.render()
                 validate_video_request(
                     api_key=self.api_key,
                     model=self.video_api.model,
-                    mode=plan.mode,
-                    duration=plan.duration,
-                    video_size=plan.size,
-                    aspect_ratio=plan.aspect_ratio,
+                    mode="text",
+                    duration=self._state.duration,
+                    video_size=getattr(self._state, "video_size", None) or "720P",
+                    aspect_ratio=width_height_to_aspect_ratio(
+                        self._state.video_width, self._state.video_height
+                    ),
                 )
-                self._state.duration = plan.duration
-                self._state.video_size = plan.size
-                ratio_sizes = {
-                    "21:9": (1680, 720), "16:9": (1280, 720), "4:3": (960, 720),
-                    "1:1": (720, 720), "3:4": (720, 960), "9:16": (720, 1280),
-                }
-                if plan.aspect_ratio in ratio_sizes:
-                    self._state.video_width, self._state.video_height = ratio_sizes[plan.aspect_ratio]
                 self._state.generation_metadata = {
-                    "planner": "openrouter",
-                    "planner_suggested_model": plan.model,
+                    "planner": "deterministic",
                     "model": self.video_api.model,
-                    "title": plan.title,
-                    "negative_prompt": plan.negative_prompt,
-                    "aspect_ratio": plan.aspect_ratio,
+                    "capability": "text-to-video",
                 }
-                self._state.negative_prompt = plan.negative_prompt or self._state.negative_prompt
-                logger.info("[Simple] OpenRouter plan accepted; sending prompt to Agnes")
-            except OpenRouterPlanningError as exc:
-                logger.error("[Simple] OpenRouter planning failed: %s", exc)
-                raise RuntimeError(f"OpenRouter: {exc}") from exc
         else:
             spec = build_video_prompt(
                 self._state.prompt,

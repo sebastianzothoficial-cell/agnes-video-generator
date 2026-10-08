@@ -1331,12 +1331,14 @@ def get_agnes_base_url() -> str:
 
 
 def get_base_url_for_key(key: str) -> str:
-    """返回某 Key 应使用的 API Base URL（含 /v1 后缀），按 Key 绑定域名路由。
+    """返回某 Key 的首选 API Base URL（含 /v1 后缀）。
 
     - 若该 Key 在配置中绑定了有效域名（com/cn/cn_bak）→ 走该域名；
     - 否则（未绑定 / env key / 无效域名）→ 回退到全局 agnes_domain。
 
-    供各 API 客户端在选中具体 Key 后据此构造请求 URL。
+    供 API 客户端在正常请求时构造 URL。401 时由请求层调用
+    get_agnes_base_urls_for_key 做跨站点兼容探测；不会把
+    401 当成普通重试，也不会切换到其他供应商。
     """
     config = load_config()
     domain = _key_domain_from_config(config, key)
@@ -1345,6 +1347,38 @@ def get_base_url_for_key(key: str) -> str:
     root = AGNES_DOMAIN_MAP.get(domain, AGNES_DOMAIN_MAP[_DEFAULT_DOMAIN])
     return f"{root}/v1"
 
+
+def get_agnes_base_urls_for_key(key: str) -> list[str]:
+    """返回该 Key 的有序 Agnes API Base URL 候选列表。
+
+    Agnes 的国际站与中国站使用不同的鉴权域名。一个 Key 如果被误配到
+    不匹配的域名，会得到 HTTP 401，即使 Key 本身有效。候选列表只用于
+    401 鉴权失败后的 endpoint failover；正常请求仍使用首选域名。
+
+    顺序：
+      1. Key 显式绑定域名；
+      2. 全局 agnes_domain；
+      3. 其他官方/兼容 Agnes 域名。
+
+    不记录、不返回 API Key 本身。
+    """
+    config = load_config()
+    bound = _key_domain_from_config(config, key)
+    global_domain = str(config.get("agnes_domain") or _DEFAULT_DOMAIN).strip()
+    preferred = bound if bound in AGNES_DOMAIN_MAP else global_domain
+    if preferred not in AGNES_DOMAIN_MAP:
+        preferred = _DEFAULT_DOMAIN
+
+    ordered_domains = [preferred]
+    for domain in ("com", "cn_bak", "cn"):
+        if domain not in ordered_domains:
+            ordered_domains.append(domain)
+
+    return [
+        f"{AGNES_DOMAIN_MAP[domain]}/v1"
+        for domain in ordered_domains
+        if domain in AGNES_DOMAIN_MAP
+    ]
 
 def get_agnes_api_root() -> str:
     """返回基于当前域名配置的 API Root URL（不含 /v1 后缀）。"""

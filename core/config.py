@@ -966,7 +966,7 @@ DURATION_FRAME_MAP = {
 # 各类型 Agnes 模型默认值（与三个 API 客户端的默认 model 对齐）
 DEFAULT_TEXT_MODEL = "agnes-3.0-flash"
 DEFAULT_IMAGE_MODEL = "agnes-image-2.5-flash"
-DEFAULT_VIDEO_MODEL = "agnes-video-v2.0"
+DEFAULT_VIDEO_MODEL = "agnes-video-2.5-flash"
 
 DEFAULT_MODELS = {
     "text": DEFAULT_TEXT_MODEL,

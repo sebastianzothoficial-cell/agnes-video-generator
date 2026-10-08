@@ -11,7 +11,7 @@ import requests
 
 from core.api.error_collector import collect_error, collect_error_from_exception
 from core.api.key_manager import get_key_ring
-from core.api.rate_limiter import get_rate_limiter
+from core.api.rate_limiter import get_rate_limiter, request_with_endpoint_failover
 from core.config import get_base_url_for_key
 from utils.image import download_image
 from utils.image_normalizer import normalize_reference_path
@@ -167,8 +167,10 @@ class AgnesImageAPI:
                 read_timeout = _READ_TIMEOUT_BASE_SECONDS * (attempt + 1)
                 key = ring.next()
                 resp = await asyncio.to_thread(
+                    request_with_endpoint_failover,
                     requests.post,
-                    f"{get_base_url_for_key(key)}/images/generations",
+                    "/images/generations",
+                    key,
                     headers=self._auth_headers(key),
                     json=payload,
                     timeout=(30, read_timeout),

@@ -262,6 +262,49 @@ def reset_rate_limiter() -> None:
 
 
 # ═══════════════════════════════════════════════════
+# Agnes endpoint 401 failover
+# ═══════════════════════════════════════════════════
+
+def request_with_endpoint_failover(
+    requester,
+    endpoint: str,
+    key: str,
+    *,
+    headers: dict | None = None,
+    **requester_kwargs,
+):
+    """Call one Agnes endpoint, trying other Agnes domains only after HTTP 401.
+
+    A valid Agnes key can be rejected by the wrong regional hostname. This helper
+    keeps the same key and request payload, and only changes the Agnes hostname
+    after an authentication failure. It never falls back to another provider.
+    """
+    base_headers = headers or {}
+    first_401 = None
+    last_response = None
+    base_urls = get_agnes_base_urls_for_key(key)
+    for base_url in base_urls:
+        url = f"{base_url}{endpoint}"
+        try:
+            response = requester(url, headers=base_headers, **requester_kwargs)
+        except (requests.ConnectionError, requests.Timeout):
+            if first_401 is not None and base_url != base_urls[-1]:
+                continue
+            raise
+        last_response = response
+        if response.status_code != 401:
+            return response
+        if first_401 is None:
+            first_401 = response
+        if base_url != base_urls[-1]:
+            logger.warning(
+                "[AgnesEndpoint] HTTP 401 on configured endpoint; "
+                "trying another compatible Agnes endpoint"
+            )
+    return first_401 or last_response
+
+
+# ═══════════════════════════════════════════════════
 # 429 换 Key + 指数退避统一封装
 # ═══════════════════════════════════════════════════
 
@@ -323,35 +366,14 @@ def request_with_key_rotation(
         key = ring.next()
         headers = {**base_headers, "Authorization": f"Bearer {key}"}
         base_urls = get_agnes_base_urls_for_key(key)
-        resp = None
-        first_401 = None
         try:
-            # Agnes 国际站 / 中国站对同一个 Key 使用不同的鉴权域名。
-            # 如果首选域名返回 401，优先把它当作「Key/域名不匹配」处理：
-            # 尝试其他 Agnes endpoint，而不是把同一个 401 当成普通重试。
-            # 这不切换供应商，也不触发 5xx/429 退避。
-            for base_url in base_urls:
-                url = f"{base_url}{endpoint}"
-                try:
-                    resp = requester(url, headers=headers, **requester_kwargs)
-                except (requests.ConnectionError, requests.Timeout):
-                    if first_401 is not None and base_url != base_urls[-1]:
-                        continue
-                    raise
-                if resp.status_code != 401:
-                    break
-                if first_401 is None:
-                    first_401 = resp
-                if base_url != base_urls[-1]:
-                    logger.warning(
-                        "[KeyRotation] Agnes returned HTTP 401 on configured endpoint; "
-                        "trying another compatible Agnes endpoint"
-                    )
-
-            # If every endpoint rejected the credentials, preserve the original
-            # response so callers keep the configured endpoint's HTTP semantics.
-            if first_401 is not None and resp is not None and resp.status_code == 401:
-                resp = first_401
+            resp = request_with_endpoint_failover(
+                requester,
+                endpoint,
+                key,
+                headers=headers,
+                **requester_kwargs,
+            )
         except (requests.ConnectionError, requests.Timeout) as e:
         except (requests.ConnectionError, requests.Timeout) as e:
             timeout_limit = timeout_retry_limit if timeout_retry_limit is not None else max_retries

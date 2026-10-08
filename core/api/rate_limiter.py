@@ -29,6 +29,8 @@
 import asyncio
 import logging
 import threading
+
+import requests
 import time
 from typing import Optional
 
@@ -352,8 +354,6 @@ def request_with_key_rotation(
     """
     import requests
 
-    from core.config import get_agnes_base_urls_for_key
-
     ring = key_ring or get_key_ring()
     base_headers = requester_kwargs.pop("headers", None) or {}
     retries = 0
@@ -365,7 +365,6 @@ def request_with_key_rotation(
         # 下次 next() 自然取到下一个 Key。正常情况下使用该 Key 的首选域名。
         key = ring.next()
         headers = {**base_headers, "Authorization": f"Bearer {key}"}
-        base_urls = get_agnes_base_urls_for_key(key)
         try:
             resp = request_with_endpoint_failover(
                 requester,
@@ -374,7 +373,6 @@ def request_with_key_rotation(
                 headers=headers,
                 **requester_kwargs,
             )
-        except (requests.ConnectionError, requests.Timeout) as e:
         except (requests.ConnectionError, requests.Timeout) as e:
             timeout_limit = timeout_retry_limit if timeout_retry_limit is not None else max_retries
             if timeout_retries < timeout_limit and retries < max_retries:

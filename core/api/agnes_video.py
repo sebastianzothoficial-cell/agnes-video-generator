@@ -511,14 +511,16 @@ class AgnesVideoAPI:
                     logger.info(f"[AgnesVideo] Polling video {video_id[:16]}... (poll #{poll_count + 1}, elapsed {elapsed:.0f}s)")
                 # 全局限速：每次轮询都消耗一个令牌（2.3 异步原生，停止可打断）
                 await get_rate_limiter().acquire_async(self._cancel_event_for_wait())
-                # M2: 用 wait_for 包裹以支持取消；429 换 Key 立即重试（轮询也轮转 Key 分摊配额）
+                # M2: use the same key-specific Agnes domain as the auth header.
                 poll_attempts = 0
                 while True:
+                    poll_key = get_key_ring().next()
+                    poll_root = get_base_url_for_key(poll_key).removesuffix("/v1")
                     resp = await asyncio.wait_for(
                         asyncio.to_thread(
                             requests.get,
-                            f"{get_agnes_api_root()}/agnesapi?video_id={video_id}{model_param}",
-                            headers=self._auth_headers(),
+                            f"{poll_root}/agnesapi?video_id={video_id}{model_param}",
+                            headers=self._auth_headers(poll_key),
                             timeout=15,
                         ),
                         timeout=30,
@@ -642,11 +644,12 @@ class AgnesVideoAPI:
                     timeout=90,
                 )
 
-                if resp.status_code == 200:
+                if 200 <= resp.status_code < 300:
                     result = resp.json()
                     video_id = result.get("video_id") or result.get("task_id") or result.get("id")
                     if video_id:
                         return video_id
+                    raise RuntimeError("Agnes video create response did not contain video_id/task_id/id")
 
                 if resp.status_code == 429:
                     # 多 Key：换 Key 立即重试（不 sleep、不计入退避）
@@ -886,6 +889,8 @@ class AgnesVideoAPI:
         generation_mode: Optional[str] = None,
         first_frame_path: Optional[str] = None,
         last_frame_path: Optional[str] = None,
+        reference_audio_paths: Optional[List[str]] = None,
+        reference_video_path: Optional[str] = None,
         **kwargs,
     ) -> str:
         # 2.5 系列模型（v6.2）：新参数协议（mode/seconds/size/aspect_ratio）。
@@ -1000,10 +1005,19 @@ class AgnesVideoAPI:
 
         aspect_ratio = self._width_height_to_aspect_ratio(width, height)
         mode = (generation_mode or "").strip().lower()
+        mode_aliases = {
+            "t2v": "text",
+            "text_to_video": "text",
+            "i2v": "reference",
+            "image_to_video": "reference",
+            "ti2vid": "reference",
+            "keyframes": "keyframe",
+        }
+        mode = mode_aliases.get(mode, mode)
         if not mode:
             if first_frame_path or last_frame_path:
                 mode = "keyframe"
-            elif reference_image_paths:
+            elif reference_image_paths or reference_audio_paths or reference_video_path:
                 mode = "reference"
             else:
                 mode = "text"
@@ -1068,7 +1082,14 @@ class AgnesVideoAPI:
                     raise ValueError("agnes-video-2.5-flash does not support reference videos")
                 if not isinstance(reference_video_path, str) or not reference_video_path.startswith(("http://", "https://")):
                     raise ValueError("Agnes reference video must use a public http(s) URL")
-                payload["videos"] = [reference_video_path]
+                video_ref = {"url": reference_video_path}
+                start_seconds = kwargs.get("reference_video_start_seconds")
+                require_audio = kwargs.get("reference_video_require_audio")
+                if start_seconds is not None:
+                    video_ref["start_seconds"] = float(start_seconds)
+                if require_audio is not None:
+                    video_ref["require_audio"] = bool(require_audio)
+                payload["videos"] = [video_ref]
 
             if not resolved_refs and not audio_refs and not reference_video_path:
                 raise ValueError("Agnes reference mode requires at least one reference image, audio, or video")
@@ -1091,11 +1112,7 @@ class AgnesVideoAPI:
             max_poll_duration=poll_timeout,
         )
 
-        video_url = (
-            final.get("remixed_from_video_id")
-            or final.get("video_url")
-            or final.get("url")
-        )
+        video_url = final.get("url") or final.get("video_url")
         if not video_url:
             data = final.get("data", {})
             if isinstance(data, dict):

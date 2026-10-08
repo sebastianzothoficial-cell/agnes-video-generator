@@ -165,7 +165,7 @@ class SimpleVideoPipeline(BasePipeline):
         first_frame = self._state.reference_image if generation_mode == "keyframe" else None
         last_frame = self._state.end_frame_image if generation_mode == "keyframe" else None
 
-        await self._emit("planning", "running", "Preparando prompt con OpenRouter...", 0.05)
+        await self._emit("planning", "running", "Preparando prompt...", 0.05)
 
         # Deterministic prompt architecture. Keep the user original prompt
         # untouched while storing the processed prompt used by the provider.

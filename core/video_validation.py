@@ -308,15 +308,6 @@ def validate_video_request(
             detail=f"El modelo '{model}' admite como máximo {max_videos} referencia(s) de video.",
         )
 
-    max_audio = caps.get("max_ref_audio")
-    max_videos = caps.get("max_ref_videos", 1 if caps.get("supports_ref_video") else 0)
-    if mode != "reference" and (reference_audio_count or reference_video_count):
-        raise HTTPException(status_code=422, detail="Audio/video de referencia solo están disponibles en modo reference.")
-    if max_audio is not None and reference_audio_count > int(max_audio):
-        raise HTTPException(status_code=422, detail=f"El modelo '{model}' admite como máximo {max_audio} audio(s) de referencia.")
-    if reference_video_count > int(max_videos or 0):
-        raise HTTPException(status_code=422, detail=f"El modelo '{model}' no admite esa cantidad de video(s) de referencia.")
-
     return {
         "verified": True,
         "source": "provider",

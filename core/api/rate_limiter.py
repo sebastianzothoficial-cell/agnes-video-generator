@@ -309,7 +309,7 @@ def request_with_key_rotation(
     """
     import requests
 
-    from core.config import get_agnes_base_urls_for_key, get_base_url_for_key
+    from core.config import get_agnes_base_urls_for_key
 
     ring = key_ring or get_key_ring()
     base_headers = requester_kwargs.pop("headers", None) or {}

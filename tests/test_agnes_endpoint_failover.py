@@ -85,3 +85,35 @@ def test_request_with_key_rotation_preserves_401_if_all_endpoints_reject(monkeyp
     )
 
     assert response.status_code == 401
+
+
+def test_model_catalog_fails_over_on_401(monkeypatch):
+    """The real model catalog must recover when the configured Agnes hostname mismatches the key."""
+    import core.api.agnes_models as models
+
+    monkeypatch.setattr(models, "get_agnes_base_urls_for_key", lambda key: [
+        "https://api.agnes-ai.cn/v1",
+        "https://apihub.agnes-ai.com/v1",
+    ])
+    calls = []
+
+    class Response(FakeResponse):
+        pass
+
+    def fake_get(url, headers=None, timeout=None):
+        calls.append(url)
+        if len(calls) == 1:
+            return Response(401, {"error": "unauthorized"})
+        return Response(200, {"data": [{"id": "agnes-video-2.5-flash", "type": "video"}]})
+
+    monkeypatch.setattr(models.requests, "get", fake_get)
+
+    catalog = models.fetch_model_catalog("k1")
+
+    assert catalog["source"] == "provider"
+    assert catalog["synced"] is True
+    assert catalog["models"]["video"] == ["agnes-video-2.5-flash"]
+    assert calls == [
+        "https://api.agnes-ai.cn/v1/models",
+        "https://apihub.agnes-ai.com/v1/models",
+    ]

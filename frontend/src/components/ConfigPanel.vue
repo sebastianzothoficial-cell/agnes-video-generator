@@ -33,6 +33,8 @@ const {
   modelSyncStatus,
   modelSaveStatus,
   modelErrorMsg,
+  modelCatalogSynced,
+  modelCatalogSource,
   betaHintVisible,
   isBetaModel,
   isPaidModel,
@@ -683,6 +685,12 @@ initCollapse()
         </div>
       </div>
       <p class="text-xs text-muted mb-4">{{ t('modelHint') }}</p>
+      <p
+        v-if="!modelCatalogSynced && modelErrorMsg"
+        class="text-xs text-amber-400 mb-4 rounded-lg bg-amber-900/20 border border-amber-700/30 px-3 py-2"
+      >
+        {{ modelErrorMsg }}
+      </p>
       <div class="space-y-3">
         <div>
           <label class="block text-xs text-muted mb-1">{{ t('modelSupplier') }}</label>

@@ -22,7 +22,6 @@ from core.api.rate_limiter import (
 )
 from core.config import (
     get_agnes_api_root,
-    get_base_url_for_key,
     is_v25_video_model,
     width_height_to_aspect_ratio,
 )

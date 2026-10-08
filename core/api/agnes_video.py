@@ -279,7 +279,7 @@ class AgnesVideoAPI:
     def __init__(
         self,
         api_key: str,
-        model: str = "agnes-video-v2.0",
+        model: str = "agnes-video-2.5-flash",
         default_duration: int = 5,
         max_retries: int = 5,
         retry_base_delay: float = 30.0,

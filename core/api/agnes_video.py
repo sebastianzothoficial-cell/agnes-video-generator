@@ -15,7 +15,11 @@ import requests
 
 from core.api.error_collector import collect_error, collect_error_from_exception
 from core.api.key_manager import get_key_ring
-from core.api.rate_limiter import get_rate_limiter, get_video_submit_limiter
+from core.api.rate_limiter import (
+    get_rate_limiter,
+    get_video_submit_limiter,
+    request_with_endpoint_failover,
+)
 from core.config import (
     get_agnes_api_root,
     get_base_url_for_key,
@@ -393,8 +397,10 @@ class AgnesVideoAPI:
                 await get_rate_limiter().acquire_async(self._cancel_event_for_wait())
                 key = ring.next()
                 resp = await asyncio.to_thread(
+                    request_with_endpoint_failover,
                     requests.post,
-                    f"{get_base_url_for_key(key)}/images/generations",
+                    "/images/generations",
+                    key,
                     headers=self._auth_headers(key),
                     json=payload,
                     timeout=(30, 120),
@@ -515,11 +521,12 @@ class AgnesVideoAPI:
                 poll_attempts = 0
                 while True:
                     poll_key = get_key_ring().next()
-                    poll_root = get_base_url_for_key(poll_key).removesuffix("/v1")
                     resp = await asyncio.wait_for(
                         asyncio.to_thread(
+                            request_with_endpoint_failover,
                             requests.get,
-                            f"{poll_root}/agnesapi?video_id={video_id}{model_param}",
+                            f"/agnesapi?video_id={video_id}{model_param}",
+                            poll_key,
                             headers=self._auth_headers(poll_key),
                             timeout=15,
                         ),
@@ -635,8 +642,10 @@ class AgnesVideoAPI:
                 key = ring.next()
                 resp = await asyncio.wait_for(
                     asyncio.to_thread(
+                        request_with_endpoint_failover,
                         requests.post,
-                        f"{get_base_url_for_key(key)}/videos",
+                        "/videos",
+                        key,
                         headers=self._auth_headers(key),
                         json=payload,
                         timeout=(15, 60),

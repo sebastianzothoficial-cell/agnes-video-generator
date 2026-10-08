@@ -224,15 +224,21 @@ def validate_video_request(
                 status_code=422,
                 detail=f"No es posible generar esta escena con '{model}' porque no soporta image-to-video/reference.",
             )
-        if not has_first_or_reference and not media_pending:
+        if mode == "i2v":
+            if not has_first_or_reference and not media_pending:
+                raise HTTPException(
+                    status_code=422,
+                    detail="El modo image-to-video requiere al menos una imagen de referencia.",
+                )
+            if has_end_frame or reference_audio_count or reference_video_count:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Image-to-video solo admite imágenes de referencia; usa reference para audio/video.",
+                )
+        elif not has_any_reference_media and not media_pending:
             raise HTTPException(
                 status_code=422,
-                detail="El modo reference/image-to-video requiere al menos una imagen de referencia.",
-            )
-        if mode == "i2v" and (has_end_frame or reference_audio_count or reference_video_count):
-            raise HTTPException(
-                status_code=422,
-                detail="Image-to-video solo admite imágenes de referencia; usa reference para audio/video.",
+                detail="El modo reference requiere al menos una imagen, audio o video de referencia.",
             )
 
     if mode == "keyframes":
@@ -286,6 +292,20 @@ def validate_video_request(
         raise HTTPException(
             status_code=422,
             detail=f"El modelo '{model}' admite como máximo {max_refs} imagen(es) de referencia.",
+        )
+
+    max_audio = caps["max_ref_audio"]
+    if max_audio is not None and reference_audio_count > int(max_audio):
+        raise HTTPException(
+            status_code=422,
+            detail=f"El modelo '{model}' admite como máximo {max_audio} referencia(s) de audio.",
+        )
+
+    max_videos = caps["max_ref_videos"]
+    if max_videos is not None and reference_video_count > int(max_videos):
+        raise HTTPException(
+            status_code=422,
+            detail=f"El modelo '{model}' admite como máximo {max_videos} referencia(s) de video.",
         )
 
     max_audio = caps.get("max_ref_audio")

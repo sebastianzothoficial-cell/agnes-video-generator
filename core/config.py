@@ -1190,7 +1190,7 @@ VIDEO_25_DURATIONS = [4, 5, 6, 8, 10, 12]
 
 # 视频模型能力元数据：供前端「选模型阶段」展示差异 + 按模型归拢表单选项
 VIDEO_MODEL_CAPABILITIES = {
-    DEFAULT_VIDEO_MODEL: {  # agnes-video-v2.0（免费旧版）
+    DEFAULT_VIDEO_MODEL: {  # default 2.5 Flash model; kept for backward-compatible metadata shape
         "label": "Video 2.0",
         "price": "free",
         "price_text": {"zh": "免费", "en": "Free"},

@@ -12,6 +12,7 @@ from typing import Callable, Optional
 
 from core.api.agnes_video import AgnesVideoAPI
 from core.config import DEFAULT_TEXT_MODEL
+from core.video_validation import validate_video_request
 from core.pipelines import BasePipeline, PipelineShutdown
 from models.task import SimpleVideoTask, StepStatus, VideoMode
 from core.prompting import build_video_prompt
@@ -174,6 +175,16 @@ class SimpleVideoPipeline(BasePipeline):
             try:
                 plan = await asyncio.to_thread(plan_video, self._state.prompt)
                 processed_prompt = plan.prompt
+                # The UI-selected Agnes model remains authoritative. OpenRouter
+                # plans prompt/parameters; it never becomes the video provider.
+                validate_video_request(
+                    api_key=self.api_key,
+                    model=self.video_api.model,
+                    mode=plan.mode,
+                    duration=plan.duration,
+                    video_size=plan.size,
+                    aspect_ratio=plan.aspect_ratio,
+                )
                 self._state.duration = plan.duration
                 self._state.video_size = plan.size
                 ratio_sizes = {
@@ -182,10 +193,10 @@ class SimpleVideoPipeline(BasePipeline):
                 }
                 if plan.aspect_ratio in ratio_sizes:
                     self._state.video_width, self._state.video_height = ratio_sizes[plan.aspect_ratio]
-                self.video_api.model = plan.model
                 self._state.generation_metadata = {
                     "planner": "openrouter",
-                    "planner_model": plan.model,
+                    "planner_suggested_model": plan.model,
+                    "model": self.video_api.model,
                     "title": plan.title,
                     "negative_prompt": plan.negative_prompt,
                     "aspect_ratio": plan.aspect_ratio,

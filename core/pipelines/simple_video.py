@@ -47,7 +47,7 @@ class SimpleVideoPipeline(BasePipeline):
         dir_name: str = None,
         chat_model: str = DEFAULT_TEXT_MODEL,
         image_model: str = "agnes-image-2.5-flash",
-        video_model: str = "agnes-video-v2.0",
+        video_model: str = "agnes-video-2.5-flash",
         progress_callback: Optional[Callable] = None,
         shutdown_event: Optional[asyncio.Event] = None,
     ):

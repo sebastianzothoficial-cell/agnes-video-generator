@@ -102,7 +102,7 @@ async def test_v25_reference_payload_supports_images_audio_and_video(monkeypatch
     payload = captured["payload"]
     assert len(payload["images"]) == 8
     assert len(payload["audios"]) == 3
-    assert payload["videos"] == ["https://public.example/ref.mp4"]
+    assert payload["videos"] == [{"url": "https://public.example/ref.mp4"}]
 
 
 @pytest.mark.asyncio
@@ -133,3 +133,33 @@ async def test_v25_rejects_more_than_three_reference_audio(monkeypatch):
             width=1280,
             height=720,
         )
+
+
+@pytest.mark.asyncio
+async def test_v25_i2v_alias_maps_to_documented_reference(monkeypatch):
+    api = AgnesVideoAPI(api_key="configured", model="agnes-video-2.5-flash")
+    captured = {}
+
+    async def fake_resolve(path):
+        return path
+
+    async def fake_submit(payload, mode, progress_callback=None):
+        captured["payload"] = payload
+        return "video_test"
+
+    monkeypatch.setattr(api, "_resolve_image_ref", fake_resolve)
+    monkeypatch.setattr(api, "_submit_with_retry", fake_submit)
+    monkeypatch.setattr(module, "normalize_reference_path", lambda path, width, height: path)
+
+    await api.submit_video(
+        prompt="reference",
+        generation_mode="i2v",
+        reference_image_paths=["ref.png"],
+        duration=5,
+        width=720,
+        height=1280,
+        video_size="720P",
+    )
+
+    assert captured["payload"]["mode"] == "reference"
+    assert captured["payload"]["images"] == ["ref.png"]

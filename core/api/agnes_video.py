@@ -273,6 +273,12 @@ def _silent_remove(path: str) -> None:
         pass
 
 
+def is_v25_video_model(model: str) -> bool:
+    """Return whether the model follows the documented Agnes Video 2.5 contract."""
+    model_id = str(model or "").strip().lower()
+    return model_id in {"agnes-video-2.5", "agnes-video-2.5-flash"}
+
+
 class AgnesVideoAPI:
     """Agnes Video 生成 API 封装（t2v / i2v / ti2vid / keyframes）。"""
 

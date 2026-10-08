@@ -11,7 +11,7 @@ import traceback
 from typing import Callable, Optional
 
 from core.api.agnes_video import AgnesVideoAPI
-from core.config import DEFAULT_TEXT_MODEL
+from core.config import DEFAULT_TEXT_MODEL, width_height_to_aspect_ratio
 from core.video_validation import validate_video_request
 from core.pipelines import BasePipeline, PipelineShutdown
 from models.task import SimpleVideoTask, StepStatus, VideoMode

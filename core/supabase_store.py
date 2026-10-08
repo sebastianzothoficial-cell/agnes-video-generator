@@ -107,49 +107,87 @@ def upload_final_video(state: Any, *, dir_name: str = "") -> str | None:
         return None
 
 def claim_task(task_id: str) -> bool:
-    """Atomically claim a queued task; recover a stale claim after 20 minutes."""
+    """Atomically claim a queued task through the database RPC.
+
+    The RPC performs one conditional UPDATE, so concurrent workers cannot both
+    transition the same task into RUNNING. A REST PATCH fallback is retained for
+    older environments that have not applied the migration yet.
+    """
     if not enabled():
         return True
     try:
-        now = datetime.now(timezone.utc)
-        now_iso = now.isoformat()
-        rows = _request(
-            "PATCH",
-            f"{TABLE}?task_key=eq.{task_id}&status=in.(pending,queued)",
-            payload={"status": "running", "worker_claimed_at": now_iso},
-            prefer="return=representation",
-        ) or []
-        if rows:
-            return True
-        # The configured FastAPI function maxDuration is 300s. A 20-minute
-        # stale threshold safely recovers a hard-crashed worker without
-        # allowing normal 15-minute executions to be claimed twice.
-        stale_before = (now - timedelta(minutes=20)).isoformat()
-        rows = _request(
-            "PATCH",
-            f"{TABLE}?task_key=eq.{task_id}&status=eq.running&worker_claimed_at=lt.{stale_before}",
-            payload={"status": "running", "worker_claimed_at": now_iso},
-            prefer="return=representation",
-        ) or []
-        return bool(rows)
+        result = _request(
+            "POST",
+            "rpc/claim_task",
+            payload={"p_task_key": task_id, "p_stale_after_minutes": 20},
+        )
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, list) and result and isinstance(result[0], bool):
+            return result[0]
+        return bool(result)
     except Exception:
-        logger.warning("[Supabase] Task claim failed for %s", task_id, exc_info=True)
-        return False
+        logger.warning(
+            "[Supabase] claim_task RPC unavailable for %s; using atomic REST fallback",
+            task_id,
+            exc_info=True,
+        )
+        try:
+            now = datetime.now(timezone.utc)
+            now_iso = now.isoformat()
+            rows = _request(
+                "PATCH",
+                f"{TABLE}?task_key=eq.{task_id}&status=in.(pending,queued)",
+                payload={"status": "running", "worker_claimed_at": now_iso},
+                prefer="return=representation",
+            ) or []
+            if rows:
+                return True
+            stale_before = (now - timedelta(minutes=20)).isoformat()
+            rows = _request(
+                "PATCH",
+                f"{TABLE}?task_key=eq.{task_id}&status=eq.running&worker_claimed_at=lt.{stale_before}",
+                payload={"status": "running", "worker_claimed_at": now_iso},
+                prefer="return=representation",
+            ) or []
+            return bool(rows)
+        except Exception:
+            logger.warning("[Supabase] Task claim failed for %s", task_id, exc_info=True)
+            return False
+
+
 def release_task_claim(task_id: str) -> bool:
-    """Return an unexpectedly failed claimed task to queued for Queue redelivery."""
+    """Release a claimed task through the database RPC."""
     if not enabled():
         return True
     try:
-        rows = _request(
-            "PATCH",
-            f"{TABLE}?task_key=eq.{task_id}&status=eq.running",
-            payload={"status": "queued", "worker_claimed_at": None},
-            prefer="return=representation",
-        ) or []
-        return bool(rows)
+        result = _request(
+            "POST",
+            "rpc/release_task_claim",
+            payload={"p_task_key": task_id},
+        )
+        if isinstance(result, bool):
+            return result
+        if isinstance(result, list) and result and isinstance(result[0], bool):
+            return result[0]
+        return bool(result)
     except Exception:
-        logger.warning("[Supabase] Task claim release failed for %s", task_id, exc_info=True)
-        return False
+        logger.warning(
+            "[Supabase] release_task_claim RPC unavailable for %s; using REST fallback",
+            task_id,
+            exc_info=True,
+        )
+        try:
+            rows = _request(
+                "PATCH",
+                f"{TABLE}?task_key=eq.{task_id}&status=eq.running",
+                payload={"status": "queued", "worker_claimed_at": None},
+                prefer="return=representation",
+            ) or []
+            return bool(rows)
+        except Exception:
+            logger.warning("[Supabase] Task claim release failed for %s", task_id, exc_info=True)
+            return False
 def get_task(task_id: str) -> dict | None:
     if not enabled():
         return None

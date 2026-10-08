@@ -5,6 +5,11 @@ import core.video_validation as vv
 from core.api.agnes_models import get_fallback_models
 
 
+@pytest.fixture(autouse=True)
+def strict_catalog_validation(monkeypatch):
+    monkeypatch.setenv("AGNES_VALIDATE_MODEL_CATALOG", "1")
+
+
 def _catalog(model="agnes-video-2.5-flash"):
     return {
         "models": {"text": [], "image": [], "video": [model]},

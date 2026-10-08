@@ -48,7 +48,8 @@ def _extract_json(content: str) -> dict:
 def _validate_plan(data: dict) -> VideoPlan:
     try:
         plan = VideoPlan.model_validate(data)
-    except ValidationError as exc: raise OpenRouterPlanningError(f'OpenRouter plan validation failed:
+    except ValidationError as exc:
+raise OpenRouterPlanningError(f'OpenRouter plan validation failed:
         {exc}') from exc
     if not 4 <= plan.duration <= 12:
         raise OpenRouterPlanningError('OpenRouter returned unsupported duration')

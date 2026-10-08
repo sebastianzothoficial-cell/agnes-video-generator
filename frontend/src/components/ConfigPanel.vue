@@ -34,7 +34,6 @@ const {
   modelSaveStatus,
   modelErrorMsg,
   modelCatalogSynced,
-  modelCatalogSource,
   betaHintVisible,
   isBetaModel,
   isPaidModel,

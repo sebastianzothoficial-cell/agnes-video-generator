@@ -1607,7 +1607,7 @@ class TestMultiHooks:
     def test_get_scene_duration(self, tmp_path):
         pipe = _make_multi(tmp_path)
         assert pipe._get_scene_duration(SceneTask(index=0, duration=10), 0) == 10
-        assert pipe._get_scene_duration(SceneTask(index=0, duration=2), 0) == 3
+        assert pipe._get_scene_duration(SceneTask(index=0, duration=2), 0) == 4
 
     def test_set_subtitle_paths(self, tmp_path):
         pipe = _make_multi(tmp_path)

@@ -160,7 +160,26 @@ class AgnesChatAPI:
         except requests.HTTPError as e:
             resp = getattr(e, "response", None)
             if resp is not None and resp.status_code < 500 and resp.status_code != 429:
-                # 4xx（非 429）不可重试
+                # 4xx（非 429）不可重试。401 经过 endpoint failover 后仍失败时，
+                # 给出可执行的诊断，而不是把 requests 的裸 URL/状态直接抛给用户。
+                if resp.status_code == 401:
+                    auth_error = (
+                        "Agnes authentication failed (HTTP 401) after trying the "
+                        "configured and compatible Agnes endpoints. Verify that "
+                        "AGNES_API_KEY is valid and belongs to the Agnes site/account "
+                        "used by this deployment."
+                    )
+                    collect_error(
+                        "chat", "chat",
+                        prompt=prompt,
+                        error_type="AgnesAuthenticationError",
+                        error_message=auth_error,
+                        status_code=401,
+                        response_body=resp.text[:5000],
+                        retry_count=_MAX_RETRIES,
+                    )
+                    raise requests.HTTPError(auth_error, response=resp) from e
+
                 collect_error(
                     "chat", "chat",
                     prompt=prompt,

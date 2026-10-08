@@ -842,7 +842,7 @@ async def create_anchor_task(
         model=video_model,
         mode="i2v",
         duration=5,
-        has_reference=bool(anchor_reference_image and anchor_reference_image.filename),
+        has_reference=bool(anchor_reference_image and anchor_reference_image.strip()),
         video_size="720P",
         media_pending=True,
     )
